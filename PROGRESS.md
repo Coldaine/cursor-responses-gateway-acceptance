@@ -14,6 +14,7 @@
 - [x] Add in-process response continuation and model discovery endpoint.
 - [x] Add plan approval/hash verification and hosted-tool receipt construction.
 - [x] Expose an authenticated MCP streamable-HTTP initialization surface at `/mcp`.
+- [x] Implement deterministic `cursor:write_brief` and `cursor:approve_plan` primitives with dispatch-directory path guards.
 - [ ] Connect MCP and Responses hosted-tool calls to real dispatch operations; current MCP registrations return explicit failed receipts until that execution layer is implemented.
 - [ ] Run a real Cursor model-discovery and acceptance pass. The local Doppler CLI is not scoped to a project/config for this workspace, and `CURSOR_API_KEY` is not present in the current process; no secret was written to disk.
 

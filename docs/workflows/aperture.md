@@ -14,7 +14,8 @@ secret. Both secret names live in Doppler project `ai-automation`, config
 Use this only for an integration test on a tailnet node, not as a durable
 worker.
 
-1. Build the gateway, set `CURSOR_MODEL=default` and
+1. Confirm `tailscale serve status` reports no pre-existing configuration on
+   the test node. Build the gateway, set `CURSOR_MODEL=default` and
    `CURSOR_WORKSPACE_CWD` to the intended checkout, then run it through
    `doppler run -- npm run start` on port 8787.
 2. Publish the localhost port inside the tailnet with
@@ -49,8 +50,10 @@ worker.
    offered by `cursor-responses`, the response completes, and an SSE response
    contains `response.created`, `response.completed`, and `[DONE]`.
 6. Remove only the `cursor-responses` provider from a fresh configuration,
-   validate and save it, stop the exact daemon process, then run
-   `tailscale serve reset`.
+   validate and save it, and stop the exact daemon process. Because the
+   procedure requires an empty Serve configuration at startup, reset is safe
+   only in that case; otherwise remove only the dedicated HTTPS 443 proxy with
+   `tailscale serve --https=443 off` after verifying it belongs to this test.
 
 ## Durable runtime recommendation
 

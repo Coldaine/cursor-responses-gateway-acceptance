@@ -39,6 +39,41 @@ const unauthorized = (): ErrorPayload => ({
   },
 });
 
+class InvalidRequestError extends Error {}
+
+function selectFunctionTool(
+  tools: unknown[],
+  toolChoice: unknown,
+): Record<string, unknown> | undefined {
+  const functions = tools.filter((tool): tool is Record<string, unknown> => {
+    if (!tool || typeof tool !== "object") return false;
+    const candidate = tool as Record<string, unknown>;
+    return candidate.type === "function" && typeof candidate.name === "string";
+  });
+
+  if (!toolChoice || typeof toolChoice !== "object") return functions[0];
+  const choice = toolChoice as Record<string, unknown>;
+  if (choice.type !== "allowed_tools") return functions[0];
+  if (!Array.isArray(choice.tools)) {
+    throw new InvalidRequestError("tool_choice.allowed_tools requires a tools array");
+  }
+
+  const allowedNames = new Set(
+    choice.tools.flatMap((tool) => {
+      if (!tool || typeof tool !== "object") return [];
+      const candidate = tool as Record<string, unknown>;
+      return candidate.type === "function" && typeof candidate.name === "string"
+        ? [candidate.name]
+        : [];
+    }),
+  );
+  const selected = functions.find((tool) => allowedNames.has(tool.name as string));
+  if (!selected && functions.length > 0) {
+    throw new InvalidRequestError("No supplied function tool is permitted by tool_choice.allowed_tools");
+  }
+  return selected;
+}
+
 function requestIsAuthenticated(request: Request, apiKey: string): boolean {
   const authorization = request.get("authorization");
   const bearerToken = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
@@ -105,6 +140,7 @@ export function createApp(options: AppOptions): Express {
 
     try {
       const input = parseResponseRequest(request.body);
+      const functionTool = selectFunctionTool(input.tools, input.tool_choice);
       const cursorApiKey = options.cursorApiKey ?? process.env.CURSOR_API_KEY;
       if (!cursorApiKey) {
         response.status(500).json({
@@ -134,11 +170,6 @@ export function createApp(options: AppOptions): Express {
         cwd: options.cwd ?? process.cwd(),
         prompt,
       });
-      const functionTool = input.tools.find((tool) => {
-        if (!tool || typeof tool !== "object") return false;
-        const candidate = tool as Record<string, unknown>;
-        return candidate.type === "function" && typeof candidate.name === "string";
-      }) as Record<string, unknown> | undefined;
       const resource = functionTool
         ? createFunctionCallResponse({
             id: `resp_${randomUUID().replaceAll("-", "")}`,
@@ -172,6 +203,12 @@ export function createApp(options: AppOptions): Express {
 
       response.json(resource);
     } catch (error) {
+      if (error instanceof InvalidRequestError) {
+        response.status(400).json({
+          error: { type: "invalid_request", message: error.message },
+        });
+        return;
+      }
       if (error instanceof PreviousResponseNotFoundError) {
         response.status(404).json({
           error: {

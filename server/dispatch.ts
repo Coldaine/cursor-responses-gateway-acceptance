@@ -35,6 +35,16 @@ export class DispatchService {
     return briefPath;
   }
 
+  async writeDraftPlan(taskId: string, content: string): Promise<string> {
+    assertTaskId(taskId);
+    const plansRoot = join(this.dispatchRoot, "plans");
+    await mkdir(plansRoot, { recursive: true });
+    const planPath = join(plansRoot, `${taskId}.md`);
+    const body = content.trimEnd();
+    await writeFile(planPath, `---\nstatus: draft\n---\n\n${body}\n`, "utf8");
+    return planPath;
+  }
+
   async approvePlan(planPath: string): Promise<VerifiedPlan> {
     const resolvedPlanPath = resolve(planPath);
     const relativePlanPath = relative(resolve(this.dispatchRoot), resolvedPlanPath);

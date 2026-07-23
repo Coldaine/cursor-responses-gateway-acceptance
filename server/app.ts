@@ -4,6 +4,7 @@ import express, { type Express, type Request, type Response } from "express";
 import { ZodError } from "zod";
 
 import { CursorSdkRunner, type CursorRunner } from "./cursor.js";
+import { CursorTaskDispatcher } from "./cursor-dispatch.js";
 import { DispatchService } from "./dispatch.js";
 import { executeDeterministicTool } from "./dispatch-tools.js";
 import {
@@ -12,7 +13,7 @@ import {
   createFunctionCallResponse,
   createHostedToolResponse,
 } from "./openresponses.js";
-import type { HostedToolType } from "./receipts.js";
+import { createToolReceipt, type HostedToolType } from "./receipts.js";
 import { parseResponseRequest, renderInputForCursor } from "./request.js";
 import { writeCompletedResponseStream } from "./sse.js";
 import { McpSessionManager } from "./mcp.js";
@@ -169,7 +170,25 @@ export function createApp(options: AppOptions): Express {
           (tool) => tool && typeof tool === "object" && (tool as Record<string, unknown>).type === hostedTool.type,
         );
         if (!declared) throw new InvalidRequestError(`Hosted tool ${hostedTool.type} was not supplied`);
-        const receipt = await executeDeterministicTool(dispatch, hostedTool.type, hostedTool.args);
+        const receipt = hostedTool.type === "cursor:plan"
+          ? await (async () => {
+              const cursorApiKey = options.cursorApiKey ?? process.env.CURSOR_API_KEY;
+              if (!cursorApiKey) {
+                throw new InvalidRequestError("CURSOR_API_KEY is not configured for cursor:plan");
+              }
+              const planPath = await new CursorTaskDispatcher(dispatch, runner).plan({
+                apiKey: cursorApiKey,
+                model: input.model,
+                taskId: String(hostedTool.args.taskId ?? ""),
+                briefPath: String(hostedTool.args.briefPath ?? ""),
+              });
+              return createToolReceipt({
+                type: "cursor:plan",
+                invocation: hostedTool.args,
+                result: { planPath },
+              });
+            })()
+          : await executeDeterministicTool(dispatch, hostedTool.type, hostedTool.args);
         const resource = createHostedToolResponse({
           id: `resp_${randomUUID().replaceAll("-", "")}`,
           model: input.model,

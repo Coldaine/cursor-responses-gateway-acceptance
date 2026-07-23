@@ -349,4 +349,34 @@ describe("server authentication", () => {
     await expect(readFile(join(repoRoot, "docs", "dispatch", "briefs", "task-14.md"), "utf8"))
       .resolves.toBe("Add a diagnostic endpoint.\n");
   });
+
+  it("uses Cursor output for a server-written hosted draft plan", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "cursor-plan-http-"));
+    const app = createApp({
+      apiKey: "test-server-key",
+      cursorApiKey: "cursor-key",
+      cwd: repoRoot,
+      runner: { async run() { return { text: "# Plan\n\n1. Add it.\n", events: [] }; } },
+    } as never);
+    const server = app.listen(0);
+    servers.push(server);
+    await once(server, "listening");
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("Expected a TCP listener");
+    const url = `http://127.0.0.1:${address.port}/v1/responses`;
+    const headers = { "content-type": "application/json", authorization: "Bearer test-server-key" };
+
+    const brief = await fetch(url, {
+      method: "POST", headers,
+      body: JSON.stringify({ model: "cursor-test", input: "Store a brief.", tools: [{ type: "cursor:write_brief" }], tool_choice: { type: "cursor:write_brief", arguments: { taskId: "task-18", content: "Add it." } } }),
+    });
+    expect(brief.status).toBe(200);
+    const plan = await fetch(url, {
+      method: "POST", headers,
+      body: JSON.stringify({ model: "cursor-test", input: "Plan it.", tools: [{ type: "cursor:plan" }], tool_choice: { type: "cursor:plan", arguments: { taskId: "task-18", briefPath: join(repoRoot, "docs", "dispatch", "briefs", "task-18.md") } } }),
+    });
+    expect(plan.status).toBe(200);
+    await expect(plan.json()).resolves.toMatchObject({ output: [{ type: "cursor:plan", status: "completed" }] });
+    await expect(readFile(join(repoRoot, "docs", "dispatch", "plans", "task-18.md"), "utf8")).resolves.toContain("status: draft");
+  });
 });

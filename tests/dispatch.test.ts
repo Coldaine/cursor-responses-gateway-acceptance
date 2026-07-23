@@ -58,4 +58,17 @@ describe("deterministic dispatch operations", () => {
     expect(diff.diff).toContain("+after");
     expect(diff.diffstat).toContain("tracked.txt");
   });
+
+  it("writes a draft plan from a Cursor planner result without letting the agent choose its path", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "cursor-plan-"));
+    const dispatch = new DispatchService(repoRoot);
+    const briefPath = await dispatch.writeBrief("task-16", "Add an endpoint.");
+    const planPath = await dispatch.writeDraftPlan("task-16", "# Plan\n\n1. Add the endpoint.\n");
+
+    expect(planPath).toBe(join(repoRoot, "docs", "dispatch", "plans", "task-16.md"));
+    await expect(readFile(planPath, "utf8")).resolves.toBe(
+      "---\nstatus: draft\n---\n\n# Plan\n\n1. Add the endpoint.\n",
+    );
+    expect(briefPath).toContain("docs");
+  });
 });

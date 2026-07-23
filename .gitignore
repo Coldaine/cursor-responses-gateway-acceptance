@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+docs/dispatch/episodes/
+docs/dispatch/runtime/
+ACCEPTANCE.local.md

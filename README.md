@@ -35,6 +35,10 @@ Ordinary Responses output is capped at 32,000 characters; its full Cursor
 output is retained under `docs/dispatch/runtime/responses/` for the configured
 workspace.
 
+`config/model-routing.yaml` maps portable client-facing model IDs to current
+Cursor model IDs. Set `allow_unlisted_models: false` once the live model list
+has been verified to reject unknown models at the HTTP boundary.
+
 ## Verification status
 
 Unit tests and type checks cover the current HTTP core. The real-Cursor

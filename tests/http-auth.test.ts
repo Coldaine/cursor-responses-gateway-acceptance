@@ -95,6 +95,35 @@ describe("server authentication", () => {
     });
   });
 
+  it("routes a configured model alias to Cursor while retaining the requested response model", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "cursor-model-http-"));
+    const routingPath = join(repoRoot, "model-routing.yaml");
+    await writeFile(routingPath, "aliases:\n  portable: cursor-internal\nallow_unlisted_models: false\n", "utf8");
+    const models: string[] = [];
+    const app = createApp({
+      apiKey: "test-server-key",
+      cursorApiKey: "cursor-key",
+      cwd: repoRoot,
+      modelRoutingPath: routingPath,
+      runner: { async run(options: { model: string }) { models.push(options.model); return { text: "ok", events: [] }; } },
+    } as never);
+    const server = app.listen(0);
+    servers.push(server);
+    await once(server, "listening");
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("Expected a TCP listener");
+
+    const response = await fetch(`http://127.0.0.1:${address.port}/v1/responses`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-server-key" },
+      body: JSON.stringify({ model: "portable", input: "Hello" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(models).toEqual(["cursor-internal"]);
+    await expect(response.json()).resolves.toMatchObject({ model: "portable" });
+  });
+
   it("emits semantic SSE events and a terminal DONE marker when stream is true", async () => {
     const app = createApp({
       apiKey: "test-server-key",

@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { join } from "node:path";
 
 import express, { type Express, type Request, type Response } from "express";
 import { ZodError } from "zod";
@@ -16,6 +17,7 @@ import { type HostedToolType } from "./receipts.js";
 import { parseResponseRequest, renderInputForCursor } from "./request.js";
 import { writeCompletedResponseStream } from "./sse.js";
 import { McpSessionManager } from "./mcp.js";
+import { ModelRouter, ModelRoutingError } from "./model-routing.js";
 import {
   InMemoryResponseStore,
   PreviousResponseNotFoundError,
@@ -28,6 +30,7 @@ export interface AppOptions {
   runner?: CursorRunner;
   responseStore?: InMemoryResponseStore;
   defaultModel?: string;
+  modelRoutingPath?: string;
 }
 
 interface ErrorPayload {
@@ -115,6 +118,9 @@ export function createApp(options: AppOptions): Express {
   const runner = options.runner ?? new CursorSdkRunner();
   const responseStore = options.responseStore ?? new InMemoryResponseStore();
   const dispatch = new DispatchService(options.cwd ?? process.cwd());
+  const modelRouter = new ModelRouter(
+    options.modelRoutingPath ?? join(options.cwd ?? process.cwd(), "config", "model-routing.yaml"),
+  );
   const hostedTools = new HostedToolExecutor(
     dispatch,
     runner,
@@ -177,6 +183,7 @@ export function createApp(options: AppOptions): Express {
 
     try {
       const input = parseResponseRequest(request.body);
+      const cursorModel = await modelRouter.resolve(input.model);
       const hostedTool = selectHostedTool(input.tool_choice);
       const functionTool = selectFunctionTool(input.tools, input.tool_choice);
       if (hostedTool) {
@@ -184,7 +191,7 @@ export function createApp(options: AppOptions): Express {
           (tool) => tool && typeof tool === "object" && (tool as Record<string, unknown>).type === hostedTool.type,
         );
         if (!declared) throw new InvalidRequestError(`Hosted tool ${hostedTool.type} was not supplied`);
-        const receipt = await hostedTools.execute(hostedTool.type, hostedTool.args, input.model);
+        const receipt = await hostedTools.execute(hostedTool.type, hostedTool.args, cursorModel);
         const resource = createHostedToolResponse({
           id: `resp_${randomUUID().replaceAll("-", "")}`,
           model: input.model,
@@ -227,7 +234,7 @@ export function createApp(options: AppOptions): Express {
         .join("\n\n");
       const output = await runner.run({
         apiKey: cursorApiKey,
-        model: input.model,
+        model: cursorModel,
         cwd: options.cwd ?? process.cwd(),
         prompt,
       });
@@ -268,6 +275,12 @@ export function createApp(options: AppOptions): Express {
       response.json(resource);
     } catch (error) {
       if (error instanceof InvalidRequestError) {
+        response.status(400).json({
+          error: { type: "invalid_request", message: error.message },
+        });
+        return;
+      }
+      if (error instanceof ModelRoutingError) {
         response.status(400).json({
           error: { type: "invalid_request", message: error.message },
         });

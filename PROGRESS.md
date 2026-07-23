@@ -22,6 +22,7 @@
 - [x] Implement `cursor:gate_phase`: it pushes a phase branch, creates an ephemeral PR, watches checks, closes red gates, and merges/deletes green gates. It returns a failed receipt when this deployment has no `origin`; no external GitHub state was changed during local tests.
 - [x] Implement Cursor-backed `cursor:review` on both surfaces. It reads the approved plan, brief, and server-measured task diff; returns a pass/fail verdict and capped findings; stores the full transcript under `docs/dispatch/episodes/`; and reverts any dispatch-directory edit by the reviewer.
 - [x] Cap ordinary Responses output at 32,000 characters and retain the full Cursor output under `docs/dispatch/runtime/responses/`; continuation storage preserves the untruncated output.
+- [x] Wire `config/model-routing.yaml` aliases and allow-list policy into HTTP request execution; aliases select the actual Cursor model while the Response retains the caller's model id.
 - [x] Persist a clean-start task baseline before the first implementation; `cursor:get_diff` and implementation receipts measure against that commit instead of an arbitrary working-tree diff.
 - [ ] Run a real Cursor model-discovery and acceptance pass. The local Doppler CLI is not scoped to a project/config for this workspace, and `CURSOR_API_KEY` is not present in the current process; no secret was written to disk.
 

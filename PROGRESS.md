@@ -8,7 +8,10 @@
 - [x] Verified the runner uses a base URL ending in `/v1`, then calls `/responses` and `/responses/compact`; the server must therefore expose `/v1/responses` and `/v1/responses/compact`.
 - [x] Verified the official `@cursor/sdk` lifecycle and model discovery APIs.
 - [x] Verified MCP streamable HTTP support in the current stable TypeScript SDK line.
-- [ ] Bootstrap the TypeScript project and write core contract tests.
+- [x] Bootstrap the TypeScript project and write core contract tests.
+- [x] Implement authenticated `/v1/responses` JSON output, current SDK adapter, request normalization, and spec-shaped terminal SSE sequence.
+- [x] Implement `/v1/responses/compact`, including the required missing-model rejection.
+- [ ] Add persisted response continuation, hosted-tool receipts and enforcement, and MCP streamable HTTP.
 
 ## Decisions recorded from current sources
 

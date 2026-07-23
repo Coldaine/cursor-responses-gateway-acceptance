@@ -14,7 +14,23 @@ export interface ImplementResult {
   summary: string;
   measuredDiffstat: string;
   flags: string[];
+  transcriptPath: string;
 }
+
+export interface PlanResult {
+  planPath: string;
+  transcriptPath: string;
+}
+
+export interface ReviewResult {
+  verdict: "pass" | "fail";
+  summary: string;
+  findings: string[];
+  transcriptPath: string;
+  flags: string[];
+}
+
+const MAX_RECEIPT_TEXT = 8_000;
 
 export class CursorTaskDispatcher {
   private implementActive = false;
@@ -29,7 +45,7 @@ export class CursorTaskDispatcher {
     model: string;
     taskId: string;
     briefPath: string;
-  }): Promise<string> {
+  }): Promise<PlanResult> {
     const briefPath = resolve(this.dispatch.repoRoot, options.briefPath);
     const briefsRoot = resolve(join(this.dispatch.dispatchRoot, "briefs"));
     const relativeBriefPath = relative(briefsRoot, briefPath).replaceAll("\\", "/");
@@ -50,7 +66,11 @@ export class CursorTaskDispatcher {
         brief,
       ].join("\n\n"),
     });
-    return this.dispatch.writeDraftPlan(options.taskId, output.text);
+    const [planPath, transcriptPath] = await Promise.all([
+      this.dispatch.writeDraftPlan(options.taskId, output.text),
+      this.dispatch.writeTranscript(options.taskId, "plan", output.text),
+    ]);
+    return { planPath, transcriptPath };
   }
 
   async implement(options: {
@@ -101,8 +121,66 @@ export class CursorTaskDispatcher {
     await this.dispatch.persistTaskBaseline(baseline);
     const measured = await this.dispatch.getDiff(options.taskId);
     return {
-      summary: output!.text,
+      summary: capText(output!.text),
       measuredDiffstat: measured.diffstat,
+      flags: dispatchDirectoryChanged ? ["dispatch_directory_edit_reverted"] : [],
+      transcriptPath: await this.dispatch.writeTranscript(options.taskId, "implement", output!.text),
+    };
+  }
+
+  async review(options: {
+    apiKey: string;
+    model: string;
+    taskId: string;
+  }): Promise<ReviewResult> {
+    const planPath = join(this.dispatch.dispatchRoot, "plans", `${options.taskId}.md`);
+    const briefPath = join(this.dispatch.dispatchRoot, "briefs", `${options.taskId}.md`);
+    const [plan, brief, diff] = await Promise.all([
+      verifyApprovedPlan(planPath),
+      readFile(briefPath, "utf8"),
+      this.dispatch.getDiff(options.taskId),
+    ]);
+    const before = await snapshotDirectory(this.dispatch.dispatchRoot);
+    let output: Awaited<ReturnType<Pick<CursorRunner, "run">["run"]>>;
+    let dispatchDirectoryChanged = false;
+    try {
+      output = await this.runner.run({
+        apiKey: options.apiKey,
+        model: options.model,
+        cwd: this.dispatch.repoRoot,
+        prompt: [
+          "You are the read-only review role for a repository task.",
+          "Do not edit files, run commands, create commits, or create pull requests.",
+          "Review the measured diff against the brief and approved plan.",
+          "Begin with exactly VERDICT: PASS or VERDICT: FAIL, then give concise findings as Markdown bullets.",
+          `Task ID: ${options.taskId}`,
+          "Brief:", brief,
+          "Approved plan:", plan.body,
+          "Measured diffstat:", diff.diffstat,
+          "Measured diff:", diff.diff,
+        ].join("\n\n"),
+      });
+    } finally {
+      try {
+        dispatchDirectoryChanged = !snapshotsEqual(before, await snapshotDirectory(this.dispatch.dispatchRoot));
+      } catch {
+        dispatchDirectoryChanged = true;
+      }
+      if (dispatchDirectoryChanged) await restoreDirectory(this.dispatch.dispatchRoot, before);
+    }
+
+    const transcript = output!.text;
+    const verdict = /^\s*VERDICT:\s*PASS\b/im.test(transcript) ? "pass" : "fail";
+    const findings = transcript
+      .split(/\r?\n/)
+      .filter((line) => /^\s*[-*]\s+/.test(line))
+      .map((line) => line.replace(/^\s*[-*]\s+/, "").slice(0, 1_000))
+      .slice(0, 50);
+    return {
+      verdict,
+      summary: capText(transcript),
+      findings,
+      transcriptPath: await this.dispatch.writeTranscript(options.taskId, "review", transcript),
       flags: dispatchDirectoryChanged ? ["dispatch_directory_edit_reverted"] : [],
     };
   }
@@ -116,6 +194,12 @@ export class CursorTaskDispatcher {
     }
     return planPath;
   }
+}
+
+function capText(text: string): string {
+  return text.length <= MAX_RECEIPT_TEXT
+    ? text
+    : `${text.slice(0, MAX_RECEIPT_TEXT)}\n\n[truncated; full transcript is stored on disk]`;
 }
 
 async function snapshotDirectory(root: string): Promise<DispatchSnapshot> {

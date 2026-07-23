@@ -131,6 +131,15 @@ export class DispatchService {
     await writeFile(taskPath, `${JSON.stringify(baseline, null, 2)}\n`, "utf8");
   }
 
+  async writeTranscript(taskId: string, role: "plan" | "implement" | "review", content: string): Promise<string> {
+    assertTaskId(taskId);
+    const episodesRoot = join(this.dispatchRoot, "episodes");
+    await mkdir(episodesRoot, { recursive: true });
+    const transcriptPath = join(episodesRoot, `${taskId}-${role}-${Date.now()}.md`);
+    await writeFile(transcriptPath, content, "utf8");
+    return transcriptPath;
+  }
+
   async integrateTask(taskId: string, phaseId: string): Promise<IntegrationResult> {
     assertTaskId(taskId);
     assertPhaseId(phaseId);

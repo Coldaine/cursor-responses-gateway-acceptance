@@ -28,6 +28,10 @@ the server host; it creates an ephemeral PR, waits for checks, closes a red
 gate, and merges/deletes a green one. This local build checkout currently has
 no remote, so that external path is not yet run.
 
+Cursor-backed `cursor:plan`, `cursor:implement`, and `cursor:review` receipts
+retain their full Cursor output in `docs/dispatch/episodes/` for later audit;
+the implement and review summaries are capped in the receipt.
+
 ## Verification status
 
 Unit tests and type checks cover the current HTTP core. The real-Cursor

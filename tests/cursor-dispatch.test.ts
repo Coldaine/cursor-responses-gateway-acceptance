@@ -25,7 +25,7 @@ describe("Cursor task dispatch", () => {
     };
     const planner = new CursorTaskDispatcher(dispatch, runner as never);
 
-    const planPath = await planner.plan({
+    const plan = await planner.plan({
       apiKey: "cursor-key",
       model: "cursor-test",
       taskId: "task-17",
@@ -34,7 +34,8 @@ describe("Cursor task dispatch", () => {
 
     expect(prompts[0]).toContain("Do not edit files");
     expect(prompts[0]).toContain("Add a health endpoint.");
-    await expect(readFile(planPath, "utf8")).resolves.toContain("status: draft");
+    await expect(readFile(plan.planPath, "utf8")).resolves.toContain("status: draft");
+    await expect(readFile(plan.transcriptPath, "utf8")).resolves.toContain("# Plan");
   });
 
   it("refuses an unapproved plan before invoking Cursor", async () => {
@@ -80,5 +81,28 @@ describe("Cursor task dispatch", () => {
     expect(result.flags).toContain("dispatch_directory_edit_reverted");
     await expect(readFile(join(repoRoot, "docs", "dispatch", "agent-edit.md"), "utf8")).rejects.toThrow();
     expect(result.measuredDiffstat).toBe("");
+  });
+
+  it("reviews a baselined task and stores the full review transcript", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "cursor-review-"));
+    await execFileAsync("git", ["init", "-q"], { cwd: repoRoot });
+    await writeFile(join(repoRoot, "feature.ts"), "export const enabled = false;\n", "utf8");
+    await execFileAsync("git", ["add", "feature.ts"], { cwd: repoRoot });
+    await execFileAsync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "initial"], { cwd: repoRoot });
+    const dispatch = new DispatchService(repoRoot);
+    await dispatch.writeBrief("task-22", "Enable the feature and cover it with a test.");
+    const planPath = await dispatch.writeDraftPlan("task-22", "# Plan\n\n1. Enable the feature.\n");
+    await approvePlan(planPath);
+    const baseline = await dispatch.captureTaskBaseline("task-22");
+    await dispatch.persistTaskBaseline(baseline);
+    await writeFile(join(repoRoot, "feature.ts"), "export const enabled = true;\n", "utf8");
+    const reviewer = new CursorTaskDispatcher(dispatch, {
+      async run() { return { text: "VERDICT: PASS\n\n- The implementation matches the plan.\n", events: [] }; },
+    } as never);
+
+    const review = await reviewer.review({ apiKey: "cursor-key", model: "cursor-test", taskId: "task-22" });
+
+    expect(review).toMatchObject({ verdict: "pass", findings: ["The implementation matches the plan."] });
+    await expect(readFile(review.transcriptPath, "utf8")).resolves.toContain("VERDICT: PASS");
   });
 });

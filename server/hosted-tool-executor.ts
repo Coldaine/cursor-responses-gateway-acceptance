@@ -22,7 +22,7 @@ export class HostedToolExecutor {
     args: Record<string, unknown>,
     model = this.defaultModel,
   ): Promise<ToolReceipt> {
-    if (type !== "cursor:plan" && type !== "cursor:implement") {
+    if (type !== "cursor:plan" && type !== "cursor:implement" && type !== "cursor:review") {
       return executeDeterministicTool(this.dispatch, type, args);
     }
     if (!this.cursorApiKey) {
@@ -44,13 +44,21 @@ export class HostedToolExecutor {
 
     try {
       if (type === "cursor:plan") {
-        const planPath = await this.cursorTasks.plan({
+        const result = await this.cursorTasks.plan({
           apiKey: this.cursorApiKey,
           model,
           taskId: String(args.taskId ?? ""),
           briefPath: String(args.briefPath ?? ""),
         });
-        return createToolReceipt({ type, invocation: args, result: { planPath } });
+        return createToolReceipt({ type, invocation: args, result: { ...result } });
+      }
+      if (type === "cursor:review") {
+        const result = await this.cursorTasks.review({
+          apiKey: this.cursorApiKey,
+          model,
+          taskId: String(args.taskId ?? ""),
+        });
+        return createToolReceipt({ type, invocation: args, result: { ...result } });
       }
       const result = await this.cursorTasks.implement({
         apiKey: this.cursorApiKey,

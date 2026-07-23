@@ -1,0 +1,4 @@
+# Client model IDs may be routed to an available Cursor model here.
+# Keep aliases empty until live Cursor model discovery has been run with CURSOR_API_KEY.
+aliases: {}
+allow_unlisted_models: true

@@ -1,0 +1,7 @@
+checks:
+  typecheck:
+    command: npm run typecheck
+  test:
+    command: npm test
+  build:
+    command: npm run build

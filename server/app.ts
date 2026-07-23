@@ -50,6 +50,43 @@ export function createApp(options: AppOptions): Express {
   const responseStore = options.responseStore ?? new InMemoryResponseStore();
   app.use(express.json({ limit: "10mb" }));
 
+  app.get("/v1/models", async (request: Request, response: Response) => {
+    if (!requestIsAuthenticated(request, options.apiKey)) {
+      response.status(401).json(unauthorized());
+      return;
+    }
+
+    const cursorApiKey = options.cursorApiKey ?? process.env.CURSOR_API_KEY;
+    if (!cursorApiKey) {
+      response.status(500).json({
+        error: {
+          type: "server_error",
+          message: "CURSOR_API_KEY is not configured",
+        },
+      });
+      return;
+    }
+
+    try {
+      const models = await runner.listModels(cursorApiKey);
+      response.json({
+        object: "list",
+        data: models.map((model) => ({
+          id: model.id,
+          object: "model",
+          owned_by: "cursor",
+        })),
+      });
+    } catch (error) {
+      response.status(500).json({
+        error: {
+          type: "server_error",
+          message: error instanceof Error ? error.message : "Model discovery failed",
+        },
+      });
+    }
+  });
+
   app.post("/v1/responses", async (request: Request, response: Response) => {
     if (!requestIsAuthenticated(request, options.apiKey)) {
       response.status(401).json(unauthorized());

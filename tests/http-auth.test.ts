@@ -221,4 +221,37 @@ describe("server authentication", () => {
       "[user]\nRemember the code word: cobalt.\n\n[assistant]\nOK.\n\n[user]\nWhat is the code word?",
     );
   });
+
+  it("lists models available from the configured Cursor account", async () => {
+    const app = createApp({
+      apiKey: "test-server-key",
+      cursorApiKey: "cursor-key",
+      runner: {
+        async listModels() {
+          return [{ id: "cursor-test", displayName: "Cursor Test" }];
+        },
+        async run() {
+          return { text: "unused", events: [] };
+        },
+      },
+    } as never);
+    const server = app.listen(0);
+    servers.push(server);
+    await once(server, "listening");
+
+    const address = server.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("Expected a TCP listener");
+    }
+
+    const response = await fetch(`http://127.0.0.1:${address.port}/v1/models`, {
+      headers: { authorization: "Bearer test-server-key" },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      object: "list",
+      data: [{ id: "cursor-test", object: "model", owned_by: "cursor" }],
+    });
+  });
 });

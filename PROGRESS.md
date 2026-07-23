@@ -11,7 +11,9 @@
 - [x] Bootstrap the TypeScript project and write core contract tests.
 - [x] Implement authenticated `/v1/responses` JSON output, current SDK adapter, request normalization, and spec-shaped terminal SSE sequence.
 - [x] Implement `/v1/responses/compact`, including the required missing-model rejection.
-- [ ] Add persisted response continuation, hosted-tool receipts and enforcement, and MCP streamable HTTP.
+- [x] Add in-process response continuation and model discovery endpoint.
+- [ ] Add hosted-tool receipts and enforcement, and MCP streamable HTTP.
+- [ ] Run a real Cursor model-discovery and acceptance pass. The local Doppler CLI is not scoped to a project/config for this workspace, and `CURSOR_API_KEY` is not present in the current process; no secret was written to disk.
 
 ## Decisions recorded from current sources
 

@@ -9,6 +9,7 @@ Read [NORTH_STAR.md](NORTH_STAR.md) first; it is owner-written intent. Read
 | Aperture deployment, secrets, Kilo use | `docs/workflows/aperture.md` |
 | Aperture ingress rationale | `docs/decisions/0001-aperture-ingress.md` |
 | Acceptance evidence | `ACCEPTANCE.md` |
+| Required build boundary | `PROGRESS.md` |
 
 Run `npm test`, `npm run typecheck`, and `npm run build` before a reviewable
 change. Keep secrets in Doppler, use explicit staging, and open a PR only for

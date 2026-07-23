@@ -1,10 +1,14 @@
 import { mkdtemp, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
 import { DispatchService } from "../server/dispatch.js";
 import { executeDeterministicTool } from "../server/dispatch-tools.js";
+
+const execFileAsync = promisify(execFile);
 
 describe("deterministic hosted tools", () => {
   it("returns bounded repository file-and-line hits for cursor:explore", async () => {
@@ -44,6 +48,25 @@ describe("deterministic hosted tools", () => {
       type: "cursor:approve_plan",
       status: "completed",
       result: { planPath, bodyHash: expect.any(String) },
+    });
+  });
+
+  it("returns a failed receipt rather than touching GitHub when gate_phase has no origin", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cursor-gate-no-origin-"));
+    await execFileAsync("git", ["init", "-q"], { cwd: root });
+    await writeFile(join(root, "tracked.txt"), "baseline\n", "utf8");
+    await execFileAsync("git", ["add", "tracked.txt"], { cwd: root });
+    await execFileAsync(
+      "git",
+      ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "baseline"],
+      { cwd: root },
+    );
+    await execFileAsync("git", ["switch", "-c", "phase/1"], { cwd: root });
+    const receipt = await executeDeterministicTool(new DispatchService(root), "cursor:gate_phase", { phaseId: "1" });
+
+    expect(receipt).toMatchObject({
+      status: "failed",
+      result: { error: "gate_phase requires an origin remote" },
     });
   });
 });

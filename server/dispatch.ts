@@ -15,6 +15,12 @@ function assertTaskId(taskId: string): void {
   }
 }
 
+function assertPhaseId(phaseId: string): void {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(phaseId)) {
+    throw new Error("phaseId must contain only letters, numbers, dots, underscores, and dashes");
+  }
+}
+
 export class DispatchService {
   readonly dispatchRoot: string;
 
@@ -112,7 +118,10 @@ export class DispatchService {
       throw new Error("Cannot establish a task baseline while non-dispatch workspace changes are present");
     }
     const commit = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: this.repoRoot });
-    return { taskId, baseCommit: commit.stdout.trim() };
+    const branch = await execFileAsync("git", ["branch", "--show-current"], { cwd: this.repoRoot });
+    const baseBranch = branch.stdout.trim();
+    if (!baseBranch) throw new Error("Cannot establish a task baseline from a detached HEAD");
+    return { taskId, baseCommit: commit.stdout.trim(), baseBranch };
   }
 
   async persistTaskBaseline(baseline: TaskBaseline): Promise<void> {
@@ -120,6 +129,86 @@ export class DispatchService {
     const taskPath = this.taskStatePath(baseline.taskId);
     await mkdir(dirname(taskPath), { recursive: true });
     await writeFile(taskPath, `${JSON.stringify(baseline, null, 2)}\n`, "utf8");
+  }
+
+  async integrateTask(taskId: string, phaseId: string): Promise<IntegrationResult> {
+    assertTaskId(taskId);
+    assertPhaseId(phaseId);
+    const baseline = await this.readTaskBaseline(taskId);
+    if (baseline.integrationCommit) {
+      throw new Error(`Task ${taskId} is already integrated at ${baseline.integrationCommit}`);
+    }
+
+    const changed = await execFileAsync("git", ["status", "--porcelain", "--", ".", ":(exclude)docs/dispatch/**"], {
+      cwd: this.repoRoot,
+    });
+    if (changed.stdout.trim().length === 0) {
+      throw new Error(`Task ${taskId} has no non-dispatch changes to integrate`);
+    }
+
+    const phaseBranch = `phase/${phaseId}`;
+    const branchExists = await this.gitRefExists(`refs/heads/${phaseBranch}`);
+    if (branchExists) {
+      await execFileAsync("git", ["switch", phaseBranch], { cwd: this.repoRoot });
+    } else {
+      await execFileAsync("git", ["switch", "-c", phaseBranch, baseline.baseCommit], { cwd: this.repoRoot });
+    }
+
+    await execFileAsync("git", ["add", "-A", "--", ".", ":(exclude)docs/dispatch/**"], { cwd: this.repoRoot });
+    const staged = await this.gitHasChanges(["diff", "--cached", "--quiet"]);
+    if (!staged) throw new Error(`Task ${taskId} produced no stageable changes`);
+    await execFileAsync("git", ["commit", "-m", `feat(${taskId}): integrate task`], { cwd: this.repoRoot });
+    const commit = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: this.repoRoot });
+    const integrationCommit = commit.stdout.trim();
+    const updated: TaskBaseline = { ...baseline, phaseBranch, integrationCommit };
+    await this.persistTaskBaseline(updated);
+    return { taskId, phaseBranch, commit: integrationCommit, baseBranch: baseline.baseBranch };
+  }
+
+  async gatePhase(phaseId: string): Promise<GateResult> {
+    assertPhaseId(phaseId);
+    const phaseBranch = `phase/${phaseId}`;
+    if (!await this.gitRefExists(`refs/heads/${phaseBranch}`)) {
+      throw new Error(`Phase branch ${phaseBranch} does not exist`);
+    }
+    try {
+      await execFileAsync("git", ["remote", "get-url", "origin"], { cwd: this.repoRoot });
+    } catch {
+      throw new Error("gate_phase requires an origin remote");
+    }
+    await execFileAsync("git", ["push", "-u", "origin", phaseBranch], { cwd: this.repoRoot });
+    const defaultBranch = await execFileAsync("gh", ["repo", "view", "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"], {
+      cwd: this.repoRoot,
+    });
+    const baseBranch = defaultBranch.stdout.trim();
+    if (!baseBranch) throw new Error("Could not resolve the remote default branch");
+    const created = await execFileAsync("gh", [
+      "pr", "create", "--base", baseBranch, "--head", phaseBranch,
+      "--title", `Phase ${phaseId}`, "--body", `Ephemeral CI gate for ${phaseBranch}.`,
+    ], { cwd: this.repoRoot });
+    const pullRequestUrl = created.stdout.trim();
+    if (!pullRequestUrl) throw new Error("gh pr create did not return a pull request URL");
+
+    try {
+      await execFileAsync("gh", ["pr", "checks", pullRequestUrl, "--watch", "--fail-fast", "--interval", "10"], {
+        cwd: this.repoRoot,
+      });
+    } catch {
+      const checks = await this.readPrChecks(pullRequestUrl);
+      await execFileAsync("gh", ["pr", "close", pullRequestUrl, "--comment", "Closing failed ephemeral phase gate."], {
+        cwd: this.repoRoot,
+      });
+      return { status: "failed", phaseBranch, pullRequestUrl, failedChecks: checks.filter((check) => check.bucket === "fail") };
+    }
+
+    await execFileAsync("gh", ["pr", "merge", pullRequestUrl, "--merge", "--delete-branch"], { cwd: this.repoRoot });
+    const state = await execFileAsync("gh", ["pr", "view", pullRequestUrl, "--json", "state,mergedAt", "--jq", ".state"], {
+      cwd: this.repoRoot,
+    });
+    if (state.stdout.trim() !== "MERGED") {
+      return { status: "pending", phaseBranch, pullRequestUrl, failedChecks: [] };
+    }
+    return { status: "merged", phaseBranch, pullRequestUrl, failedChecks: [] };
   }
 
   async explore(query: string, paths?: string[]): Promise<ExploreResult> {
@@ -174,13 +263,63 @@ export class DispatchService {
     assertTaskId(taskId);
     try {
       const parsed = JSON.parse(await readFile(this.taskStatePath(taskId), "utf8")) as Partial<TaskBaseline>;
-      if (parsed.taskId !== taskId || typeof parsed.baseCommit !== "string" || parsed.baseCommit.length === 0) {
+      if (
+        parsed.taskId !== taskId ||
+        typeof parsed.baseCommit !== "string" || parsed.baseCommit.length === 0 ||
+        typeof parsed.baseBranch !== "string" || parsed.baseBranch.length === 0
+      ) {
         throw new Error(`Task baseline for ${taskId} is invalid`);
       }
-      return { taskId, baseCommit: parsed.baseCommit };
+      return {
+        taskId,
+        baseCommit: parsed.baseCommit,
+        baseBranch: parsed.baseBranch,
+        ...(typeof parsed.phaseBranch === "string" ? { phaseBranch: parsed.phaseBranch } : {}),
+        ...(typeof parsed.integrationCommit === "string" ? { integrationCommit: parsed.integrationCommit } : {}),
+      };
     } catch (error: unknown) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
       throw error;
+    }
+  }
+
+  private async gitRefExists(ref: string): Promise<boolean> {
+    try {
+      await execFileAsync("git", ["show-ref", "--verify", "--quiet", ref], { cwd: this.repoRoot });
+      return true;
+    } catch (error: unknown) {
+      if ((error as { code?: unknown }).code === 1) return false;
+      throw error;
+    }
+  }
+
+  private async gitHasChanges(args: string[]): Promise<boolean> {
+    try {
+      await execFileAsync("git", args, { cwd: this.repoRoot });
+      return false;
+    } catch (error: unknown) {
+      if ((error as { code?: unknown }).code === 1) return true;
+      throw error;
+    }
+  }
+
+  private async readPrChecks(pullRequestUrl: string): Promise<PrCheck[]> {
+    try {
+      const result = await execFileAsync("gh", ["pr", "checks", pullRequestUrl, "--json", "name,bucket,state,link"], {
+        cwd: this.repoRoot,
+      });
+      const parsed = JSON.parse(result.stdout) as unknown;
+      return Array.isArray(parsed)
+        ? parsed.flatMap((entry): PrCheck[] => {
+          if (!entry || typeof entry !== "object") return [];
+          const candidate = entry as Record<string, unknown>;
+          return typeof candidate.name === "string" && typeof candidate.bucket === "string" && typeof candidate.state === "string"
+            ? [{ name: candidate.name, bucket: candidate.bucket, state: candidate.state, link: typeof candidate.link === "string" ? candidate.link : undefined }]
+            : [];
+        })
+        : [];
+    } catch {
+      return [];
     }
   }
 }
@@ -203,6 +342,30 @@ export interface MeasuredDiff {
 export interface TaskBaseline {
   taskId: string;
   baseCommit: string;
+  baseBranch: string;
+  phaseBranch?: string;
+  integrationCommit?: string;
+}
+
+export interface IntegrationResult {
+  taskId: string;
+  phaseBranch: string;
+  commit: string;
+  baseBranch: string;
+}
+
+export interface PrCheck {
+  name: string;
+  bucket: string;
+  state: string;
+  link?: string;
+}
+
+export interface GateResult {
+  status: "merged" | "failed" | "pending";
+  phaseBranch: string;
+  pullRequestUrl: string;
+  failedChecks: PrCheck[];
 }
 
 export interface ExploreResult {

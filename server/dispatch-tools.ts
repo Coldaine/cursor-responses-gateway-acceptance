@@ -61,6 +61,22 @@ export async function executeDeterministicTool(
           },
         });
       }
+      case "cursor:integrate_task": {
+        const result = await dispatch.integrateTask(
+          stringArgument(args, "taskId"),
+          stringArgument(args, "phaseId"),
+        );
+        return createToolReceipt({ type, invocation: args, result: { ...result } });
+      }
+      case "cursor:gate_phase": {
+        const result = await dispatch.gatePhase(stringArgument(args, "phaseId"));
+        return createToolReceipt({
+          type,
+          status: result.status === "merged" ? "completed" : "failed",
+          invocation: args,
+          result: { ...result },
+        });
+      }
       default:
         return createToolReceipt({
           type,

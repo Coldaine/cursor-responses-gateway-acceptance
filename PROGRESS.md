@@ -18,7 +18,9 @@
 - [x] Connect deterministic hosted tools and Cursor-backed `cursor:plan` / `cursor:implement` to the Responses surface. `implement` verifies approval and body hash before invoking Cursor, serializes runs, reverts all `docs/dispatch` edits, and returns server-measured diffstat.
 - [x] Connect the same `cursor:plan` and `cursor:implement` execution layer to MCP, including the configured default Cursor model for MCP calls.
 - [x] Implement bounded, repository-scoped `cursor:explore` file-and-line receipts on both surfaces.
-- [ ] Implement the remaining hosted roles (`review`, `integrate_task`, and `gate_phase`) on both surfaces.
+- [x] Implement `cursor:integrate_task`: it requires a persisted clean-start task baseline, switches or creates `phase/<n>`, stages no dispatch records, and commits task changes without touching the base branch.
+- [x] Implement `cursor:gate_phase`: it pushes a phase branch, creates an ephemeral PR, watches checks, closes red gates, and merges/deletes green gates. It returns a failed receipt when this deployment has no `origin`; no external GitHub state was changed during local tests.
+- [ ] Implement the remaining Cursor-backed `cursor:review` role on both surfaces.
 - [x] Persist a clean-start task baseline before the first implementation; `cursor:get_diff` and implementation receipts measure against that commit instead of an arbitrary working-tree diff.
 - [ ] Run a real Cursor model-discovery and acceptance pass. The local Doppler CLI is not scoped to a project/config for this workspace, and `CURSOR_API_KEY` is not present in the current process; no secret was written to disk.
 

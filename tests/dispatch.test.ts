@@ -79,6 +79,30 @@ describe("deterministic dispatch operations", () => {
     expect(diff.diff).toContain("+after");
   });
 
+  it("integrates only a baselined task onto a phase branch without changing base", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "cursor-integrate-"));
+    await execFileAsync("git", ["init", "-q"], { cwd: repoRoot });
+    await execFileAsync("git", ["config", "user.name", "Test"], { cwd: repoRoot });
+    await execFileAsync("git", ["config", "user.email", "test@example.com"], { cwd: repoRoot });
+    await writeFile(join(repoRoot, "tracked.txt"), "before\n", "utf8");
+    await execFileAsync("git", ["add", "tracked.txt"], { cwd: repoRoot });
+    await execFileAsync("git", ["commit", "-qm", "baseline"], { cwd: repoRoot });
+    const dispatch = new DispatchService(repoRoot);
+    const baseline = await dispatch.captureTaskBaseline("task-9");
+    await dispatch.persistTaskBaseline(baseline);
+    await writeFile(join(repoRoot, "tracked.txt"), "after\n", "utf8");
+
+    const result = await dispatch.integrateTask("task-9", "1");
+
+    expect(result).toMatchObject({ taskId: "task-9", phaseBranch: "phase/1", baseBranch: baseline.baseBranch });
+    await expect(execFileAsync("git", ["branch", "--show-current"], { cwd: repoRoot }))
+      .resolves.toMatchObject({ stdout: "phase/1\n" });
+    await expect(execFileAsync("git", ["show", `${baseline.baseBranch}:tracked.txt`], { cwd: repoRoot }))
+      .resolves.toMatchObject({ stdout: "before\n" });
+    await expect(execFileAsync("git", ["show", "phase/1:tracked.txt"], { cwd: repoRoot }))
+      .resolves.toMatchObject({ stdout: "after\n" });
+  });
+
   it("writes a draft plan from a Cursor planner result without letting the agent choose its path", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), "cursor-plan-"));
     const dispatch = new DispatchService(repoRoot);

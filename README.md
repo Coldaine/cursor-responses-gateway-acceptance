@@ -22,6 +22,12 @@ npm run dev
 Callers use `Authorization: Bearer <server bearer token>` or `X-API-Key`.
 Never commit either value or an `.env` file.
 
+`cursor:integrate_task` commits a baselined task only to `phase/<n>`.
+`cursor:gate_phase` requires an `origin` remote and authenticated GitHub CLI on
+the server host; it creates an ephemeral PR, waits for checks, closes a red
+gate, and merges/deletes a green one. This local build checkout currently has
+no remote, so that external path is not yet run.
+
 ## Verification status
 
 Unit tests and type checks cover the current HTTP core. The real-Cursor

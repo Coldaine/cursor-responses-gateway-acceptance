@@ -16,14 +16,38 @@ WebSocket status: not attempted (stretch goal).
 
 Pending: run `npm run accept` against the live server using a real Cursor SDK run. This section will contain the eight required calls and the out-of-scope edit fault case.
 
+### Direct Doppler SDK verification 2026-07-23
+
+The official `@cursor/sdk` was run through Doppler injection of
+`CURSOR_API_KEY` only. `Cursor.models.list` returned 32 models including
+`default`; an `Agent.create` run with that model finished successfully after
+15 streamed events and returned `doppler-sdk-agent-ok`. No secret value was
+printed or written to disk.
+
 ## 3. Aperture kit
 
 Provider configuration and task-zero finding: see `aperture/provider-entry.md`.
 
-Awaiting owner: register the provider, then run `npm run accept` with
-`APERTURE_BASE_URL` against Aperture and append the result plus matching
-Aperture session-log evidence. Custom Open Responses item preservation remains
-unverified until that run.
+A temporary provider route is proven below. A durable provider plus a complete
+`npm run accept` pass against `APERTURE_BASE_URL`, including matching
+session-log evidence, remains pending. Custom Open Responses item preservation
+is unverified until that complete run.
+
+### Temporary Aperture route verification 2026-07-23
+
+- Added a temporary `cursor-responses` provider with `openai_responses: true`,
+  `openai_chat: false`, bearer override injection, and model `default`.
+- `GET /v1/models` through Aperture exposed `default` with provider id
+  `cursor-responses`.
+- An unauthenticated-to-the-gateway `POST /v1/responses` through Aperture
+  completed a real Cursor response with `aperture-route-ok.`.
+- A streamed response through Aperture preserved `response.created`,
+  `response.completed`, and terminal `[DONE]`.
+- The gateway URL rejected the same request without Aperture’s injected bearer
+  credential with HTTP 401.
+- The provider, Tailscale Serve rule, and temporary gateway process were
+  removed after verification. This is a successful route proof, not a durable
+  deployment or the complete Aperture acceptance script.
 
 ### Acceptance attempt 2026-07-23T12:39:48.553Z
 

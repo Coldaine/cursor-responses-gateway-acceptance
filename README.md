@@ -32,10 +32,10 @@ Callers use `Authorization: Bearer <server bearer token>` or `X-API-Key`.
 Never commit either value or an `.env` file.
 
 `cursor:integrate_task` commits a baselined task only to `phase/<n>`.
-`cursor:gate_phase` requires an `origin` remote and authenticated GitHub CLI on
-the server host; it creates an ephemeral PR, waits for checks, closes a red
-gate, and merges/deletes a green one. This local build checkout currently has
-no remote, so that external path is not yet run.
+`cursor:gate_phase` requires an authenticated GitHub CLI and passing PR CI on
+the server host. It creates an ephemeral PR, waits for checks, closes a red
+gate, and merges/deletes a green one. The repository now has an `origin` and
+PR CI; the end-to-end hosted phase gate remains an acceptance task.
 
 Cursor-backed `cursor:plan`, `cursor:implement`, and `cursor:review` receipts
 retain their full Cursor output in `docs/dispatch/episodes/` for later audit;
@@ -51,13 +51,14 @@ has been verified to reject unknown models at the HTTP boundary.
 ## Verification status
 
 Unit tests and type checks cover the current HTTP core. The real-Cursor
-acceptance run, the official Open Responses compliance suite, and several
-hosted roles are not complete yet; see `PROGRESS.md` and `ACCEPTANCE.md` for
-the authoritative state.
+acceptance evidence, including the temporary Aperture route, is recorded in
+`ACCEPTANCE.md`; the official Open Responses compliance suite remains blocked
+by its external checker startup failure.
 
 ## Aperture
 
-Use [the ready-to-paste provider entry](aperture/provider-entry.md) after a
-tailnet owner has selected a real reachable server address and Cursor model.
-The provider must enable `openai_responses`, and its `baseurl` must not include
-`/v1`. The direct and Aperture acceptance evidence remains pending.
+Use [the ready-to-paste provider entry](aperture/provider-entry.md) with the
+[Aperture operating workflow](docs/workflows/aperture.md). The provider must
+enable `openai_responses`, and its `baseurl` must not include `/v1`. A
+temporary tailnet-only route was verified; no provider or gateway daemon is
+left active after that test.

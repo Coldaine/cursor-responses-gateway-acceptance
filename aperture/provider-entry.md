@@ -7,7 +7,7 @@ Replace the placeholders before an Aperture owner saves this provider. Keep
 ```json
 {
   "providers": {
-    "cursor-openresponses": {
+    "cursor-responses": {
       "name": "Cursor Responses Gateway",
       "description": "Cursor SDK-backed Open Responses server",
       "baseurl": "http://<tailnet-hostname-or-ip>:8787",
@@ -28,15 +28,12 @@ Replace the placeholders before an Aperture owner saves this provider. Keep
 callers authenticate to Aperture through tailnet identity rather than receiving
 that key. Do not commit a substituted provider key.
 
-## Owner runbook
+## Operation
 
-1. Replace the tailnet server address, provider key, and one verified Cursor
-   model ID.
-2. Save the provider as an Aperture owner admin.
-3. From a tailnet device, run `npm run accept` with `APERTURE_BASE_URL` set to
-   the Aperture endpoint and the same model ID.
-4. Append both script output and the matching Aperture session-log evidence to
-   `ACCEPTANCE.md`.
+Follow [the Aperture workflow](../docs/workflows/aperture.md) to create,
+validate, test, and remove or persist this provider safely. A temporary
+provider using this shape has already completed a real Cursor response and SSE
+call through Aperture; it was intentionally removed after the test.
 
 ## Compatibility finding (task zero)
 

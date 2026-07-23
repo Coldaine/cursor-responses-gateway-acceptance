@@ -1,9 +1,13 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { spawn } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { parse } from "yaml";
 
 import { approvePlan, type VerifiedPlan } from "./plan-policy.js";
+
+const execFileAsync = promisify(execFile);
 
 function assertTaskId(taskId: string): void {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(taskId)) {
@@ -66,6 +70,24 @@ export class DispatchService {
       }),
     );
   }
+
+  async getDiff(): Promise<MeasuredDiff> {
+    const [diffstat, diff] = await Promise.all([
+      execFileAsync("git", ["diff", "--no-ext-diff", "--stat"], {
+        cwd: this.repoRoot,
+        maxBuffer: 2_000_000,
+      }),
+      execFileAsync("git", ["diff", "--no-ext-diff"], {
+        cwd: this.repoRoot,
+        maxBuffer: 2_000_000,
+      }),
+    ]);
+    return {
+      diffstat: diffstat.stdout.slice(-8_000),
+      diff: diff.stdout.slice(-64_000),
+      truncated: diff.stdout.length > 64_000,
+    };
+  }
 }
 
 export interface CheckResult {
@@ -74,6 +96,12 @@ export interface CheckResult {
   passed: boolean;
   exitCode: number | null;
   outputTail: string;
+}
+
+export interface MeasuredDiff {
+  diffstat: string;
+  diff: string;
+  truncated: boolean;
 }
 
 async function runCheck(name: string, command: string, cwd: string): Promise<CheckResult> {

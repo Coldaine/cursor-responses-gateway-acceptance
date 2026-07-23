@@ -39,6 +39,18 @@ export async function executeDeterministicTool(
         const checks = await dispatch.runChecks(suite);
         return createToolReceipt({ type, invocation: args, result: { checks } });
       }
+      case "cursor:get_diff": {
+        const diff = await dispatch.getDiff();
+        return createToolReceipt({
+          type,
+          invocation: args,
+          result: {
+            diffstat: diff.diffstat,
+            diff: diff.diff,
+            truncated: diff.truncated,
+          },
+        });
+      }
       default:
         return createToolReceipt({
           type,

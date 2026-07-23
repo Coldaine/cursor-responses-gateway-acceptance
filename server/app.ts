@@ -4,11 +4,15 @@ import express, { type Express, type Request, type Response } from "express";
 import { ZodError } from "zod";
 
 import { CursorSdkRunner, type CursorRunner } from "./cursor.js";
+import { DispatchService } from "./dispatch.js";
+import { executeDeterministicTool } from "./dispatch-tools.js";
 import {
   createCompactionResource,
   createCompletedResponse,
   createFunctionCallResponse,
+  createHostedToolResponse,
 } from "./openresponses.js";
+import type { HostedToolType } from "./receipts.js";
 import { parseResponseRequest, renderInputForCursor } from "./request.js";
 import { writeCompletedResponseStream } from "./sse.js";
 import { handleMcpRequest } from "./mcp.js";
@@ -74,6 +78,22 @@ function selectFunctionTool(
   return selected;
 }
 
+const hostedToolTypes = new Set<HostedToolType>([
+  "cursor:explore", "cursor:plan", "cursor:implement", "cursor:review",
+  "cursor:write_brief", "cursor:approve_plan", "cursor:run_checks", "cursor:get_diff",
+  "cursor:integrate_task", "cursor:gate_phase",
+]);
+
+function selectHostedTool(toolChoice: unknown): { type: HostedToolType; args: Record<string, unknown> } | null {
+  if (!toolChoice || typeof toolChoice !== "object") return null;
+  const choice = toolChoice as Record<string, unknown>;
+  if (typeof choice.type !== "string" || !hostedToolTypes.has(choice.type as HostedToolType)) return null;
+  if (!choice.arguments || typeof choice.arguments !== "object" || Array.isArray(choice.arguments)) {
+    throw new InvalidRequestError("Hosted tool choice requires an arguments object");
+  }
+  return { type: choice.type as HostedToolType, args: choice.arguments as Record<string, unknown> };
+}
+
 function requestIsAuthenticated(request: Request, apiKey: string): boolean {
   const authorization = request.get("authorization");
   const bearerToken = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
@@ -85,6 +105,7 @@ export function createApp(options: AppOptions): Express {
   const app = express();
   const runner = options.runner ?? new CursorSdkRunner();
   const responseStore = options.responseStore ?? new InMemoryResponseStore();
+  const dispatch = new DispatchService(options.cwd ?? process.cwd());
   app.use(express.json({ limit: "10mb" }));
 
   app.get("/v1/models", async (request: Request, response: Response) => {
@@ -140,7 +161,31 @@ export function createApp(options: AppOptions): Express {
 
     try {
       const input = parseResponseRequest(request.body);
+      const hostedTool = selectHostedTool(input.tool_choice);
       const functionTool = selectFunctionTool(input.tools, input.tool_choice);
+      if (hostedTool) {
+        const declared = input.tools.some(
+          (tool) => tool && typeof tool === "object" && (tool as Record<string, unknown>).type === hostedTool.type,
+        );
+        if (!declared) throw new InvalidRequestError(`Hosted tool ${hostedTool.type} was not supplied`);
+        const receipt = await executeDeterministicTool(dispatch, hostedTool.type, hostedTool.args);
+        const resource = createHostedToolResponse({
+          id: `resp_${randomUUID().replaceAll("-", "")}`,
+          model: input.model,
+          receipt: {
+            id: receipt.id,
+            type: receipt.type,
+            status: receipt.status,
+            invocation: receipt.invocation,
+            result: receipt.result,
+          },
+          createdAt: Math.floor(Date.now() / 1000),
+          previousResponseId: input.previous_response_id,
+          store: input.store,
+        });
+        response.json(resource);
+        return;
+      }
       const cursorApiKey = options.cursorApiKey ?? process.env.CURSOR_API_KEY;
       if (!cursorApiKey) {
         response.status(500).json({

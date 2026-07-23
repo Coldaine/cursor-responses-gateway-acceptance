@@ -1,5 +1,8 @@
 import { once } from "node:events";
+import { mkdtemp, readFile } from "node:fs/promises";
 import type { Server } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../server/app.js";
@@ -313,5 +316,37 @@ describe("server authentication", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: { type: "invalid_request", message: expect.stringContaining("allowed_tools") },
     });
+  });
+
+  it("executes a provider-hosted brief tool and returns its receipt item", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "cursor-hosted-http-"));
+    const app = createApp({ apiKey: "test-server-key", cwd: repoRoot });
+    const server = app.listen(0);
+    servers.push(server);
+    await once(server, "listening");
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("Expected a TCP listener");
+
+    const response = await fetch(`http://127.0.0.1:${address.port}/v1/responses`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-server-key" },
+      body: JSON.stringify({
+        model: "cursor-test",
+        input: "Store the brief.",
+        tools: [{ type: "cursor:write_brief" }],
+        tool_choice: {
+          type: "cursor:write_brief",
+          arguments: { taskId: "task-14", content: "Add a diagnostic endpoint." },
+        },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "completed",
+      output: [{ type: "cursor:write_brief", status: "completed" }],
+    });
+    await expect(readFile(join(repoRoot, "docs", "dispatch", "briefs", "task-14.md"), "utf8"))
+      .resolves.toBe("Add a diagnostic endpoint.\n");
   });
 });

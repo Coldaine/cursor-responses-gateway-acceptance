@@ -187,3 +187,22 @@ export function createFunctionCallResponse(options: {
     ],
   } as unknown as ResponseResource;
 }
+
+export function createHostedToolResponse(options: {
+  id: string;
+  model: string;
+  receipt: Record<string, unknown>;
+  createdAt: number;
+  previousResponseId?: string | null;
+  store?: boolean;
+}): ResponseResource {
+  const response = createCompletedResponse({
+    id: options.id,
+    model: options.model,
+    text: "",
+    createdAt: options.createdAt,
+    previousResponseId: options.previousResponseId,
+    store: options.store,
+  });
+  return { ...response, output: [options.receipt] } as unknown as ResponseResource;
+}

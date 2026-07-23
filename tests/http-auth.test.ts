@@ -4,6 +4,7 @@ import type { Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { RateLimitError, CursorSdkError } from "@cursor/sdk";
 
 import { createApp } from "../server/app.js";
 
@@ -122,6 +123,35 @@ describe("server authentication", () => {
     expect(response.status).toBe(200);
     expect(models).toEqual(["cursor-internal"]);
     await expect(response.json()).resolves.toMatchObject({ model: "portable" });
+  });
+
+  it("maps Cursor rate-limit and model failures to Open Responses error types", async () => {
+    const makeRequest = async (failure: Error) => {
+      const app = createApp({
+        apiKey: "test-server-key",
+        cursorApiKey: "cursor-key",
+        cwd: process.cwd(),
+        runner: { async run() { throw failure; } },
+      } as never);
+      const server = app.listen(0);
+      servers.push(server);
+      await once(server, "listening");
+      const address = server.address();
+      if (address === null || typeof address === "string") throw new Error("Expected a TCP listener");
+      return fetch(`http://127.0.0.1:${address.port}/v1/responses`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer test-server-key" },
+        body: JSON.stringify({ model: "cursor-test", input: "Hello" }),
+      });
+    };
+
+    const rateLimit = await makeRequest(new RateLimitError("usage exhausted", { status: 429 }));
+    expect(rateLimit.status).toBe(429);
+    await expect(rateLimit.json()).resolves.toMatchObject({ error: { type: "too_many_requests" } });
+
+    const modelFailure = await makeRequest(new CursorSdkError("unknown model", { status: 400 }));
+    expect(modelFailure.status).toBe(500);
+    await expect(modelFailure.json()).resolves.toMatchObject({ error: { type: "model_error" } });
   });
 
   it("emits semantic SSE events and a terminal DONE marker when stream is true", async () => {

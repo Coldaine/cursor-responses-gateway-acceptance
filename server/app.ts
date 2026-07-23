@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import express, { type Express, type Request, type Response } from "express";
 import { ZodError } from "zod";
+import { CursorSdkError, RateLimitError } from "@cursor/sdk";
 
 import { CursorSdkRunner, type CursorRunner } from "./cursor.js";
 import { DispatchService } from "./dispatch.js";
@@ -35,7 +36,7 @@ export interface AppOptions {
 
 interface ErrorPayload {
   error: {
-    type: "invalid_request";
+    type: "invalid_request" | "not_found" | "model_error" | "server_error" | "too_many_requests";
     message: string;
   };
 }
@@ -111,6 +112,14 @@ function requestIsAuthenticated(request: Request, apiKey: string): boolean {
   const bearerToken = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
   const xApiKey = request.get("x-api-key");
   return bearerToken === apiKey || xApiKey === apiKey;
+}
+
+function sendSdkError(response: Response, error: CursorSdkError): void {
+  if (error instanceof RateLimitError || error.status === 429) {
+    response.status(429).json({ error: { type: "too_many_requests", message: error.message } });
+    return;
+  }
+  response.status(500).json({ error: { type: "model_error", message: error.message } });
 }
 
 export function createApp(options: AppOptions): Express {
@@ -302,6 +311,10 @@ export function createApp(options: AppOptions): Express {
             message: error.issues.map((issue) => issue.message).join("; "),
           },
         });
+        return;
+      }
+      if (error instanceof CursorSdkError) {
+        sendSdkError(response, error);
         return;
       }
 

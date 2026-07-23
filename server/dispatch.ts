@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { execFile } from "node:child_process";
@@ -252,26 +252,72 @@ export class DispatchService {
       return relativePath;
     });
 
-    let stdout = "";
+    let searchOutput: ExploreSearchOutput = { stdout: "", truncated: false };
     try {
       const result = await execFileAsync("rg", [
         "--line-number", "--no-heading", "--color", "never", "--ignore-case",
         "--glob", "!node_modules/**", "--glob", "!dist/**", "--glob", "!.git/**",
         searchTerms.join("|"), ...safePaths,
       ], { cwd: this.repoRoot, maxBuffer: 1_000_000 });
-      stdout = result.stdout;
+      searchOutput = { stdout: result.stdout, truncated: false };
     } catch (error: unknown) {
-      if ((error as { code?: unknown }).code !== 1) throw error;
+      const code = (error as { code?: unknown }).code;
+      if (code === "ENOENT") {
+        searchOutput = await this.exploreWithoutRipgrep(searchTerms, safePaths);
+      } else if (code !== 1) {
+        throw error;
+      }
     }
 
-    const allLines = stdout.split(/\r?\n/).filter(Boolean);
+    const allLines = searchOutput.stdout.split(/\r?\n/).filter(Boolean);
     const hits = allLines.slice(0, 100).flatMap((line) => {
       const match = line.match(/^(.+?):(\d+):(.*)$/);
       return match
         ? [{ path: match[1].replaceAll("\\", "/").replace(/^\.\//, ""), line: Number.parseInt(match[2], 10), excerpt: match[3].slice(0, 500) }]
         : [];
     });
-    return { query, hits, truncated: allLines.length > hits.length };
+    return { query, hits, truncated: searchOutput.truncated || allLines.length > hits.length };
+  }
+
+  private async exploreWithoutRipgrep(searchTerms: string[], paths: string[]): Promise<ExploreSearchOutput> {
+    const lines: string[] = [];
+    let filesVisited = 0;
+    let truncated = false;
+    const visit = async (relativePath: string): Promise<void> => {
+      if (truncated) return;
+      const absolutePath = resolve(this.repoRoot, relativePath);
+      const metadata = await stat(absolutePath);
+      if (metadata.isDirectory()) {
+        for (const entry of await readdir(absolutePath, { withFileTypes: true })) {
+          if ([".git", "dist", "node_modules"].includes(entry.name)) continue;
+          await visit(join(relativePath, entry.name));
+          if (truncated) return;
+        }
+        return;
+      }
+      if (!metadata.isFile()) return;
+      filesVisited += 1;
+      if (filesVisited > 10_000 || metadata.size > 1_000_000) {
+        truncated = true;
+        return;
+      }
+      const content = await readFile(absolutePath, "utf8").catch(() => null);
+      if (content === null) return;
+      for (const [index, line] of content.split(/\r?\n/).entries()) {
+        if (!searchTerms.some((term) => line.toLowerCase().includes(term))) continue;
+        lines.push(`${relativePath.replaceAll("\\", "/")}:${index + 1}:${line}`);
+        if (lines.length > 100) {
+          truncated = true;
+          return;
+        }
+      }
+    };
+
+    for (const path of paths) {
+      await visit(path);
+      if (truncated) break;
+    }
+    return { stdout: lines.join("\n"), truncated };
   }
 
   private taskStatePath(taskId: string): string {
@@ -408,6 +454,11 @@ export interface GateResult {
 export interface ExploreResult {
   query: string;
   hits: Array<{ path: string; line: number; excerpt: string }>;
+  truncated: boolean;
+}
+
+interface ExploreSearchOutput {
+  stdout: string;
   truncated: boolean;
 }
 

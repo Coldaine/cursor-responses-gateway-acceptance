@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
@@ -39,6 +39,21 @@ describe("deterministic dispatch operations", () => {
       expect.objectContaining({ name: "pass", passed: true, exitCode: 0 }),
       expect.objectContaining({ name: "fail", passed: false, exitCode: 3 }),
     ]);
+  });
+
+  it("falls back to a bounded filesystem search when ripgrep is unavailable", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "cursor-explore-fallback-"));
+    await writeFile(join(repoRoot, "response-server.ts"), "export const responseServer = true;\n", "utf8");
+    const originalPath = process.env.PATH;
+    process.env.PATH = dirname(process.execPath);
+
+    try {
+      await expect(new DispatchService(repoRoot).explore("Find the response server entry point")).resolves.toMatchObject({
+        hits: [expect.objectContaining({ path: "response-server.ts", line: 1 })],
+      });
+    } finally {
+      process.env.PATH = originalPath;
+    }
   });
 
   it("returns a capped, measured git diff and diffstat", async () => {

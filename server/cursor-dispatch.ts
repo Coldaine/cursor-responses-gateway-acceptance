@@ -65,6 +65,7 @@ export class CursorTaskDispatcher {
 
     const planPath = this.assertPlanPath(options.planPath);
     const plan = await verifyApprovedPlan(planPath);
+    const baseline = await this.dispatch.captureTaskBaseline(options.taskId);
     this.implementActive = true;
     const before = await snapshotDirectory(this.dispatch.dispatchRoot);
     let output: Awaited<ReturnType<Pick<CursorRunner, "run">["run"]>>;
@@ -97,7 +98,8 @@ export class CursorTaskDispatcher {
       this.implementActive = false;
     }
 
-    const measured = await this.dispatch.getDiff();
+    await this.dispatch.persistTaskBaseline(baseline);
+    const measured = await this.dispatch.getDiff(options.taskId);
     return {
       summary: output!.text,
       measuredDiffstat: measured.diffstat,

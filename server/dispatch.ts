@@ -81,13 +81,14 @@ export class DispatchService {
     );
   }
 
-  async getDiff(): Promise<MeasuredDiff> {
+  async getDiff(taskId?: string): Promise<MeasuredDiff> {
+    const baseCommit = taskId ? (await this.readTaskBaseline(taskId)).baseCommit : undefined;
     const [diffstat, diff] = await Promise.all([
-      execFileAsync("git", ["diff", "--no-ext-diff", "--stat"], {
+      execFileAsync("git", ["diff", "--no-ext-diff", "--stat", ...(baseCommit ? [baseCommit] : [])], {
         cwd: this.repoRoot,
         maxBuffer: 2_000_000,
       }),
-      execFileAsync("git", ["diff", "--no-ext-diff"], {
+      execFileAsync("git", ["diff", "--no-ext-diff", ...(baseCommit ? [baseCommit] : [])], {
         cwd: this.repoRoot,
         maxBuffer: 2_000_000,
       }),
@@ -96,7 +97,29 @@ export class DispatchService {
       diffstat: diffstat.stdout.slice(-8_000),
       diff: diff.stdout.slice(-64_000),
       truncated: diff.stdout.length > 64_000,
+      ...(baseCommit ? { baseCommit } : {}),
     };
+  }
+
+  async captureTaskBaseline(taskId: string): Promise<TaskBaseline> {
+    assertTaskId(taskId);
+    const existing = await this.tryReadTaskBaseline(taskId);
+    if (existing) return existing;
+    const dirty = await execFileAsync("git", ["status", "--porcelain", "--", ".", ":(exclude)docs/dispatch/**"], {
+      cwd: this.repoRoot,
+    });
+    if (dirty.stdout.trim().length > 0) {
+      throw new Error("Cannot establish a task baseline while non-dispatch workspace changes are present");
+    }
+    const commit = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: this.repoRoot });
+    return { taskId, baseCommit: commit.stdout.trim() };
+  }
+
+  async persistTaskBaseline(baseline: TaskBaseline): Promise<void> {
+    assertTaskId(baseline.taskId);
+    const taskPath = this.taskStatePath(baseline.taskId);
+    await mkdir(dirname(taskPath), { recursive: true });
+    await writeFile(taskPath, `${JSON.stringify(baseline, null, 2)}\n`, "utf8");
   }
 
   async explore(query: string, paths?: string[]): Promise<ExploreResult> {
@@ -136,6 +159,30 @@ export class DispatchService {
     });
     return { query, hits, truncated: allLines.length > hits.length };
   }
+
+  private taskStatePath(taskId: string): string {
+    return join(this.dispatchRoot, "runtime", "tasks", `${taskId}.json`);
+  }
+
+  private async readTaskBaseline(taskId: string): Promise<TaskBaseline> {
+    const baseline = await this.tryReadTaskBaseline(taskId);
+    if (!baseline) throw new Error(`No task baseline exists for ${taskId}`);
+    return baseline;
+  }
+
+  private async tryReadTaskBaseline(taskId: string): Promise<TaskBaseline | null> {
+    assertTaskId(taskId);
+    try {
+      const parsed = JSON.parse(await readFile(this.taskStatePath(taskId), "utf8")) as Partial<TaskBaseline>;
+      if (parsed.taskId !== taskId || typeof parsed.baseCommit !== "string" || parsed.baseCommit.length === 0) {
+        throw new Error(`Task baseline for ${taskId} is invalid`);
+      }
+      return { taskId, baseCommit: parsed.baseCommit };
+    } catch (error: unknown) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    }
+  }
 }
 
 export interface CheckResult {
@@ -150,6 +197,12 @@ export interface MeasuredDiff {
   diffstat: string;
   diff: string;
   truncated: boolean;
+  baseCommit?: string;
+}
+
+export interface TaskBaseline {
+  taskId: string;
+  baseCommit: string;
 }
 
 export interface ExploreResult {

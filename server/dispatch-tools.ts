@@ -48,7 +48,9 @@ export async function executeDeterministicTool(
         return createToolReceipt({ type, invocation: args, result: { checks } });
       }
       case "cursor:get_diff": {
-        const diff = await dispatch.getDiff();
+        const taskId = args.taskId;
+        if (taskId !== undefined && typeof taskId !== "string") throw new Error("taskId must be a string when provided");
+        const diff = await dispatch.getDiff(taskId);
         return createToolReceipt({
           type,
           invocation: args,

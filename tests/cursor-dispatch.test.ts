@@ -64,6 +64,7 @@ describe("Cursor task dispatch", () => {
   it("reverts dispatch-directory edits and returns the measured diffstat", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), "cursor-implement-"));
     await execFileAsync("git", ["init", "-q"], { cwd: repoRoot });
+    await execFileAsync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "initial"], { cwd: repoRoot });
     const dispatch = new DispatchService(repoRoot);
     const planPath = await dispatch.writeDraftPlan("task-20", "# Plan\n\nDo it.\n");
     await approvePlan(planPath);

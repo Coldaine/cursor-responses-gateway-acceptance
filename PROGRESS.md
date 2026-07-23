@@ -19,7 +19,7 @@
 - [x] Connect the same `cursor:plan` and `cursor:implement` execution layer to MCP, including the configured default Cursor model for MCP calls.
 - [x] Implement bounded, repository-scoped `cursor:explore` file-and-line receipts on both surfaces.
 - [ ] Implement the remaining hosted roles (`review`, `integrate_task`, and `gate_phase`) on both surfaces.
-- [ ] Baseline task diffs so `cursor:get_diff` is scoped to each task rather than the whole working-tree diff.
+- [x] Persist a clean-start task baseline before the first implementation; `cursor:get_diff` and implementation receipts measure against that commit instead of an arbitrary working-tree diff.
 - [ ] Run a real Cursor model-discovery and acceptance pass. The local Doppler CLI is not scoped to a project/config for this workspace, and `CURSOR_API_KEY` is not present in the current process; no secret was written to disk.
 
 ## Decisions recorded from current sources

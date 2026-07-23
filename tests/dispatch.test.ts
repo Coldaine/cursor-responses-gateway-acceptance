@@ -59,6 +59,26 @@ describe("deterministic dispatch operations", () => {
     expect(diff.diffstat).toContain("tracked.txt");
   });
 
+  it("records a task baseline and reports only changes after that commit", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "cursor-task-baseline-"));
+    await execFileAsync("git", ["init", "-q"], { cwd: repoRoot });
+    await writeFile(join(repoRoot, "tracked.txt"), "before\n", "utf8");
+    await execFileAsync("git", ["add", "tracked.txt"], { cwd: repoRoot });
+    await execFileAsync(
+      "git",
+      ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "baseline"],
+      { cwd: repoRoot },
+    );
+    const dispatch = new DispatchService(repoRoot);
+    const baseline = await dispatch.captureTaskBaseline("task-8");
+    await dispatch.persistTaskBaseline(baseline);
+    await writeFile(join(repoRoot, "tracked.txt"), "after\n", "utf8");
+
+    const diff = await dispatch.getDiff("task-8");
+    expect(diff.baseCommit).toBe(baseline.baseCommit);
+    expect(diff.diff).toContain("+after");
+  });
+
   it("writes a draft plan from a Cursor planner result without letting the agent choose its path", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), "cursor-plan-"));
     const dispatch = new DispatchService(repoRoot);

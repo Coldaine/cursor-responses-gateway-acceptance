@@ -3,7 +3,9 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
 
-import { createToolReceipt, type HostedToolType } from "./receipts.js";
+import { DispatchService } from "./dispatch.js";
+import { executeDeterministicTool } from "./dispatch-tools.js";
+import type { HostedToolType } from "./receipts.js";
 
 const hostedTools: Array<{
   name: HostedToolType;
@@ -62,7 +64,7 @@ const hostedTools: Array<{
   },
 ];
 
-function buildMcpServer(): McpServer {
+function buildMcpServer(dispatch: DispatchService): McpServer {
   const server = new McpServer({
     name: "cursor-openresponses-provider",
     version: "0.1.0",
@@ -70,25 +72,22 @@ function buildMcpServer(): McpServer {
 
   for (const tool of hostedTools) {
     server.registerTool(tool.name, { description: tool.description, inputSchema: tool.inputSchema }, async (args) => {
-      const receipt = createToolReceipt({
-        type: tool.name,
-        status: "failed",
-        invocation: args,
-        result: {
-          error: "Hosted tool dispatch is not configured yet",
-        },
-      });
+      const receipt = await executeDeterministicTool(dispatch, tool.name, args);
       return {
         content: [{ type: "text", text: JSON.stringify(receipt) }],
-        isError: true,
+        isError: receipt.status !== "completed",
       };
     });
   }
   return server;
 }
 
-export async function handleMcpRequest(request: Request, response: Response): Promise<void> {
-  const server = buildMcpServer();
+export async function handleMcpRequest(
+  request: Request,
+  response: Response,
+  repoRoot: string,
+): Promise<void> {
+  const server = buildMcpServer(new DispatchService(repoRoot));
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   try {
     await server.connect(transport);

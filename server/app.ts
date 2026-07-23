@@ -93,7 +93,7 @@ export function createApp(options: AppOptions): Express {
       response.status(401).json(unauthorized());
       return;
     }
-    await handleMcpRequest(request, response);
+    await handleMcpRequest(request, response, options.cwd ?? process.cwd());
   });
 
   app.post("/v1/responses", async (request: Request, response: Response) => {

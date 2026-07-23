@@ -46,6 +46,14 @@ const unauthorized = (): ErrorPayload => ({
 
 class InvalidRequestError extends Error {}
 
+const MAX_RESPONSE_TEXT_CHARS = 32_000;
+
+function capResponseText(text: string): string {
+  return text.length <= MAX_RESPONSE_TEXT_CHARS
+    ? text
+    : `${text.slice(0, MAX_RESPONSE_TEXT_CHARS)}\n\n[truncated by cursor-openresponses-provider]`;
+}
+
 function selectFunctionTool(
   tools: unknown[],
   toolChoice: unknown,
@@ -223,9 +231,12 @@ export function createApp(options: AppOptions): Express {
         cwd: options.cwd ?? process.cwd(),
         prompt,
       });
+      const responseId = `resp_${randomUUID().replaceAll("-", "")}`;
+      const responseText = capResponseText(output.text);
+      await dispatch.writeResponseTranscript(responseId, output.text);
       const resource = functionTool
         ? createFunctionCallResponse({
-            id: `resp_${randomUUID().replaceAll("-", "")}`,
+            id: responseId,
             model: input.model,
             functionName: functionTool.name as string,
             createdAt: Math.floor(Date.now() / 1000),
@@ -233,9 +244,9 @@ export function createApp(options: AppOptions): Express {
             store: input.store,
           })
         : createCompletedResponse({
-        id: `resp_${randomUUID().replaceAll("-", "")}`,
+        id: responseId,
         model: input.model,
-        text: output.text,
+        text: responseText,
         createdAt: Math.floor(Date.now() / 1000),
         previousResponseId: input.previous_response_id,
         store: input.store,

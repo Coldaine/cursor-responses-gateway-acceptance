@@ -140,6 +140,15 @@ export class DispatchService {
     return transcriptPath;
   }
 
+  async writeResponseTranscript(responseId: string, content: string): Promise<string> {
+    if (!/^resp_[a-zA-Z0-9]+$/.test(responseId)) throw new Error("responseId is invalid");
+    const responsesRoot = join(this.dispatchRoot, "runtime", "responses");
+    await mkdir(responsesRoot, { recursive: true });
+    const transcriptPath = join(responsesRoot, `${responseId}.md`);
+    await writeFile(transcriptPath, content, "utf8");
+    return transcriptPath;
+  }
+
   async integrateTask(taskId: string, phaseId: string): Promise<IntegrationResult> {
     assertTaskId(taskId);
     assertPhaseId(phaseId);

@@ -31,6 +31,9 @@ no remote, so that external path is not yet run.
 Cursor-backed `cursor:plan`, `cursor:implement`, and `cursor:review` receipts
 retain their full Cursor output in `docs/dispatch/episodes/` for later audit;
 the implement and review summaries are capped in the receipt.
+Ordinary Responses output is capped at 32,000 characters; its full Cursor
+output is retained under `docs/dispatch/runtime/responses/` for the configured
+workspace.
 
 ## Verification status
 

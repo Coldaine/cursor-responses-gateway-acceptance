@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
@@ -82,18 +83,46 @@ function buildMcpServer(dispatch: DispatchService): McpServer {
   return server;
 }
 
-export async function handleMcpRequest(
-  request: Request,
-  response: Response,
-  repoRoot: string,
-): Promise<void> {
-  const server = buildMcpServer(new DispatchService(repoRoot));
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-  try {
+interface McpSession {
+  server: McpServer;
+  transport: StreamableHTTPServerTransport;
+}
+
+export class McpSessionManager {
+  private readonly sessions = new Map<string, McpSession>();
+
+  constructor(private readonly repoRoot: string) {}
+
+  async handle(request: Request, response: Response): Promise<void> {
+    const sessionId = request.get("mcp-session-id");
+    if (sessionId) {
+      const session = this.sessions.get(sessionId);
+      if (!session) {
+        response.status(400).json({
+          jsonrpc: "2.0",
+          error: { code: -32000, message: "Unknown MCP session" },
+          id: null,
+        });
+        return;
+      }
+      await session.transport.handleRequest(request, response, request.body);
+      return;
+    }
+
+    const server = buildMcpServer(new DispatchService(this.repoRoot));
+    let transport: StreamableHTTPServerTransport;
+    transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (newSessionId) => {
+        this.sessions.set(newSessionId, { server, transport });
+      },
+    });
+    transport.onclose = () => {
+      const closedSessionId = transport.sessionId;
+      if (closedSessionId) this.sessions.delete(closedSessionId);
+      void server.close();
+    };
     await server.connect(transport);
     await transport.handleRequest(request, response, request.body);
-  } finally {
-    await transport.close();
-    await server.close();
   }
 }

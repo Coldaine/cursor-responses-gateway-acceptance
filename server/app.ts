@@ -15,7 +15,7 @@ import {
 import type { HostedToolType } from "./receipts.js";
 import { parseResponseRequest, renderInputForCursor } from "./request.js";
 import { writeCompletedResponseStream } from "./sse.js";
-import { handleMcpRequest } from "./mcp.js";
+import { McpSessionManager } from "./mcp.js";
 import {
   InMemoryResponseStore,
   PreviousResponseNotFoundError,
@@ -106,6 +106,7 @@ export function createApp(options: AppOptions): Express {
   const runner = options.runner ?? new CursorSdkRunner();
   const responseStore = options.responseStore ?? new InMemoryResponseStore();
   const dispatch = new DispatchService(options.cwd ?? process.cwd());
+  const mcpSessions = new McpSessionManager(options.cwd ?? process.cwd());
   app.use(express.json({ limit: "10mb" }));
 
   app.get("/v1/models", async (request: Request, response: Response) => {
@@ -150,7 +151,7 @@ export function createApp(options: AppOptions): Express {
       response.status(401).json(unauthorized());
       return;
     }
-    await handleMcpRequest(request, response, options.cwd ?? process.cwd());
+    await mcpSessions.handle(request, response);
   });
 
   app.post("/v1/responses", async (request: Request, response: Response) => {

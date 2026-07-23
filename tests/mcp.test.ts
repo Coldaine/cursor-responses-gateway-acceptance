@@ -1,5 +1,8 @@
 import { once } from "node:events";
+import { mkdtemp, readFile } from "node:fs/promises";
 import type { Server } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../server/app.js";
@@ -19,7 +22,8 @@ afterEach(async () => {
 
 describe("MCP streamable HTTP surface", () => {
   it("accepts an authenticated initialize request at /mcp", async () => {
-    const app = createApp({ apiKey: "test-server-key" });
+    const repoRoot = await mkdtemp(join(tmpdir(), "cursor-mcp-"));
+    const app = createApp({ apiKey: "test-server-key", cwd: repoRoot });
     const server = app.listen(0);
     servers.push(server);
     await once(server, "listening");
@@ -49,6 +53,8 @@ describe("MCP streamable HTTP surface", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/event-stream");
+    const sessionId = response.headers.get("mcp-session-id");
+    expect(sessionId).toBeTruthy();
     const body = await response.text();
     const dataLine = body.split("\n").find((line) => line.startsWith("data: "));
     if (!dataLine) throw new Error("Expected an MCP SSE data line");
@@ -57,5 +63,37 @@ describe("MCP streamable HTTP surface", () => {
       id: 1,
       result: { serverInfo: { name: "cursor-openresponses-provider" } },
     });
+
+    const toolResponse = await fetch(`http://127.0.0.1:${address.port}/mcp`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-server-key",
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        "mcp-session-id": sessionId ?? "",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: {
+          name: "cursor:write_brief",
+          arguments: { taskId: "task-15", content: "Write this through MCP." },
+        },
+      }),
+    });
+    expect(toolResponse.status).toBe(200);
+    const toolBody = await toolResponse.text();
+    const toolData = toolBody.split("\n").find((line) => line.startsWith("data: "));
+    if (!toolData) throw new Error("Expected an MCP tool SSE data line");
+    const toolPayload = JSON.parse(toolData.slice("data: ".length)) as {
+      result: { content: Array<{ text: string }> };
+    };
+    expect(JSON.parse(toolPayload.result.content[0].text)).toMatchObject({
+      type: "cursor:write_brief",
+      status: "completed",
+    });
+    await expect(readFile(join(repoRoot, "docs", "dispatch", "briefs", "task-15.md"), "utf8"))
+      .resolves.toBe("Write this through MCP.\n");
   });
 });

@@ -254,4 +254,34 @@ describe("server authentication", () => {
       data: [{ id: "cursor-test", object: "model", owned_by: "cursor" }],
     });
   });
+
+  it("returns an externally hosted function_call item when a client supplies a function tool", async () => {
+    const app = createApp({
+      apiKey: "test-server-key",
+      cursorApiKey: "cursor-key",
+      cwd: process.cwd(),
+      runner: { async run() { return { text: "unused", events: [] }; } },
+    } as never);
+    const server = app.listen(0);
+    servers.push(server);
+    await once(server, "listening");
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("Expected a TCP listener");
+
+    const response = await fetch(`http://127.0.0.1:${address.port}/v1/responses`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-server-key" },
+      body: JSON.stringify({
+        model: "cursor-test",
+        input: "Check the weather.",
+        tools: [{ type: "function", name: "get_weather", parameters: { type: "object" } }],
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "completed",
+      output: [{ type: "function_call", name: "get_weather", arguments: "{}", status: "completed" }],
+    });
+  });
 });

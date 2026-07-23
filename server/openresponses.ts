@@ -156,3 +156,34 @@ export function createCompletedResponse(
     prompt_cache_key: null,
   };
 }
+
+export function createFunctionCallResponse(options: {
+  id: string;
+  model: string;
+  functionName: string;
+  createdAt: number;
+  previousResponseId?: string | null;
+  store?: boolean;
+}): ResponseResource {
+  const response = createCompletedResponse({
+    id: options.id,
+    model: options.model,
+    text: "",
+    createdAt: options.createdAt,
+    previousResponseId: options.previousResponseId,
+    store: options.store,
+  });
+  return {
+    ...response,
+    output: [
+      {
+        id: `fc_${options.id}`,
+        type: "function_call",
+        call_id: `call_${options.id}`,
+        name: options.functionName,
+        arguments: "{}",
+        status: "completed",
+      },
+    ],
+  } as unknown as ResponseResource;
+}

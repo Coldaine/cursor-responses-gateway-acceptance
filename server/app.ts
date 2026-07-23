@@ -7,6 +7,7 @@ import { CursorSdkRunner, type CursorRunner } from "./cursor.js";
 import {
   createCompactionResource,
   createCompletedResponse,
+  createFunctionCallResponse,
 } from "./openresponses.js";
 import { parseResponseRequest, renderInputForCursor } from "./request.js";
 import { writeCompletedResponseStream } from "./sse.js";
@@ -133,7 +134,21 @@ export function createApp(options: AppOptions): Express {
         cwd: options.cwd ?? process.cwd(),
         prompt,
       });
-      const resource = createCompletedResponse({
+      const functionTool = input.tools.find((tool) => {
+        if (!tool || typeof tool !== "object") return false;
+        const candidate = tool as Record<string, unknown>;
+        return candidate.type === "function" && typeof candidate.name === "string";
+      }) as Record<string, unknown> | undefined;
+      const resource = functionTool
+        ? createFunctionCallResponse({
+            id: `resp_${randomUUID().replaceAll("-", "")}`,
+            model: input.model,
+            functionName: functionTool.name as string,
+            createdAt: Math.floor(Date.now() / 1000),
+            previousResponseId: input.previous_response_id,
+            store: input.store,
+          })
+        : createCompletedResponse({
         id: `resp_${randomUUID().replaceAll("-", "")}`,
         model: input.model,
         text: output.text,

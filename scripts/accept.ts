@@ -38,20 +38,40 @@ function assertOk(response: Response, name: string): void {
   if (!response.ok) throw new Error(`${name}: HTTP ${response.status}`);
 }
 
-const results = await Promise.all([
-  run("1. model resolution", async () => {
+async function hostedTool(type: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const response = await request("/responses", {
+    model,
+    input: `Execute ${type}.`,
+    tools: [{ type }],
+    tool_choice: { type, arguments: args },
+  });
+  assertOk(response, type);
+  const payload = (await response.json()) as { output?: Array<Record<string, unknown>> };
+  const receipt = payload.output?.find((item) => item.type === type);
+  if (!receipt) throw new Error(`${type}: receipt item was missing`);
+  if (receipt.status !== "completed") throw new Error(`${type}: ${String((receipt.result as { error?: unknown })?.error ?? receipt.status)}`);
+  return receipt;
+}
+
+const results: AcceptanceResult[] = [];
+results.push(
+  await run("1. model resolution", async () => {
     const response = await request("/models");
     assertOk(response, "models");
     const payload = (await response.json()) as { data?: Array<{ id?: string }> };
     if (!payload.data?.some((entry) => entry.id === model)) throw new Error(`model ${model} was not listed`);
   }),
-  run("2. basic non-streaming response", async () => {
+);
+results.push(
+  await run("2. basic non-streaming response", async () => {
     const response = await request("/responses", { model, input: "Reply with exactly: accepted" });
     assertOk(response, "basic response");
     const payload = (await response.json()) as { status?: string; output?: unknown[] };
     if (payload.status !== "completed" || !payload.output?.length) throw new Error("missing completed output");
   }),
-  run("3. streaming response", async () => {
+);
+results.push(
+  await run("3. streaming response", async () => {
     const response = await request("/responses", { model, input: "Reply with exactly: stream", stream: true });
     assertOk(response, "streaming response");
     const payload = await response.text();
@@ -59,16 +79,47 @@ const results = await Promise.all([
       throw new Error("missing terminal Responses SSE events");
     }
   }),
-  run("4. cursor:explore receipt", async () => {
-    const response = await request("/responses", {
-      model,
-      input: "Use cursor:explore to find the response server entry point.",
-      tools: [{ type: "cursor:explore" }],
-      tool_choice: { type: "cursor:explore" },
-    });
-    assertOk(response, "cursor:explore");
+);
+results.push(
+  await run("4. cursor:explore receipt", async () => {
+    await hostedTool("cursor:explore", { query: "Find the response server entry point." });
   }),
-]);
+);
+results.push(
+  await run("5. brief, plan, approval, and implement lifecycle", async () => {
+    await hostedTool("cursor:write_brief", { taskId: "acceptance-task", content: "Add a small function and test." });
+    const plan = await hostedTool("cursor:plan", { taskId: "acceptance-task", briefPath: "docs/dispatch/briefs/acceptance-task.md" });
+    const planPath = String((plan.result as { planPath?: unknown })?.planPath);
+    await hostedTool("cursor:implement", { taskId: "acceptance-task", planPath });
+    await hostedTool("cursor:approve_plan", { planPath });
+    await hostedTool("cursor:implement", { taskId: "acceptance-task", planPath });
+  }),
+);
+results.push(
+  await run("6. checks and measured diff", async () => {
+    await hostedTool("cursor:run_checks", {});
+    await hostedTool("cursor:get_diff", { taskId: "acceptance-task" });
+  }),
+);
+results.push(
+  await run("7. integration, phase gate, and out-of-scope fault", async () => {
+    await hostedTool("cursor:integrate_task", { taskId: "acceptance-task", phaseId: "acceptance" });
+    await hostedTool("cursor:gate_phase", { phaseId: "acceptance" });
+    const receipt = await hostedTool("cursor:implement", { taskId: "out-of-scope", planPath: "docs/dispatch/plans/out-of-scope.md" });
+    const flags = (receipt.result as { flags?: unknown })?.flags;
+    if (!Array.isArray(flags) || flags.length === 0) throw new Error("out-of-scope edit was not flagged");
+  }),
+);
+results.push(
+  await run("8. previous_response_id continuation", async () => {
+    const first = await request("/responses", { model, input: "Remember the code word: cobalt. Reply with OK." });
+    assertOk(first, "continuation seed");
+    const firstPayload = (await first.json()) as { id?: string };
+    if (!firstPayload.id) throw new Error("continuation seed omitted response id");
+    const second = await request("/responses", { model, previous_response_id: firstPayload.id, input: "What is the code word?" });
+    assertOk(second, "continuation follow-up");
+  }),
+);
 
 const report = results
   .map((result) => `- ${result.passed ? "PASS" : "FAIL"}: ${result.name} — ${result.detail}`)

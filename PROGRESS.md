@@ -12,13 +12,16 @@
 - [x] Implement authenticated `/v1/responses` JSON output, current SDK adapter, request normalization, and spec-shaped terminal SSE sequence.
 - [x] Implement `/v1/responses/compact`, including the required missing-model rejection.
 - [x] Add in-process response continuation and model discovery endpoint.
-- [ ] Add hosted-tool receipts and enforcement, and MCP streamable HTTP.
+- [x] Add plan approval/hash verification and hosted-tool receipt construction.
+- [x] Expose an authenticated MCP streamable-HTTP initialization surface at `/mcp`.
+- [ ] Connect MCP and Responses hosted-tool calls to real dispatch operations; current MCP registrations return explicit failed receipts until that execution layer is implemented.
 - [ ] Run a real Cursor model-discovery and acceptance pass. The local Doppler CLI is not scoped to a project/config for this workspace, and `CURSOR_API_KEY` is not present in the current process; no secret was written to disk.
 
 ## Decisions recorded from current sources
 
 - Runtime: Node 22.13 or newer. `GOAL.md` permits Node 20+, but current `@cursor/sdk` 1.0.24 requires Node 22.13+; this repository uses the stricter compatible floor.
 - MCP SDK: `@modelcontextprotocol/sdk` 1.x stable line, not the 2.x beta packages.
+- MCP tool-name warning: the SDK warns that `cursor:` names are outside its conventional grammar, but the goal explicitly mandates that extension slug. Keep those names; do not invent aliases.
 - HTTP routes: `/v1/responses`, `/v1/responses/compact`, and `/mcp`.
 - No API keys, bearer tokens, or `.env` files are committed.
 

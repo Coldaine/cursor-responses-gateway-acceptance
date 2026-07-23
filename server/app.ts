@@ -10,6 +10,7 @@ import {
 } from "./openresponses.js";
 import { parseResponseRequest, renderInputForCursor } from "./request.js";
 import { writeCompletedResponseStream } from "./sse.js";
+import { handleMcpRequest } from "./mcp.js";
 import {
   InMemoryResponseStore,
   PreviousResponseNotFoundError,
@@ -85,6 +86,14 @@ export function createApp(options: AppOptions): Express {
         },
       });
     }
+  });
+
+  app.post("/mcp", async (request: Request, response: Response) => {
+    if (!requestIsAuthenticated(request, options.apiKey)) {
+      response.status(401).json(unauthorized());
+      return;
+    }
+    await handleMcpRequest(request, response);
   });
 
   app.post("/v1/responses", async (request: Request, response: Response) => {

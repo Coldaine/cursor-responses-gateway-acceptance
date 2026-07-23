@@ -12,4 +12,9 @@ Pending: run `npm run accept` against the live server using a real Cursor SDK ru
 
 ## 3. Aperture kit
 
-Pending: provider entry and compatibility finding. If the owner registers the provider and authorizes this host on the tailnet, append the Aperture-routed acceptance output; otherwise record the required awaiting-owner note.
+Provider configuration and task-zero finding: see `aperture/provider-entry.md`.
+
+Awaiting owner: register the provider, then run `npm run accept` with
+`APERTURE_BASE_URL` against Aperture and append the result plus matching
+Aperture session-log evidence. Custom Open Responses item preservation remains
+unverified until that run.

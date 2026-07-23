@@ -28,4 +28,9 @@
 
 ## Aperture task zero
 
-Pending: verify from Tailscale's current provider-compatibility documentation whether self-hosted providers preserve the Open Responses route, SSE framing, and custom response items. Do not claim proxy compatibility until that source says so.
+- [x] Tailscale's current provider matrix permits `openai_responses` for
+  self-hosted providers, but defaults them to `openai_chat`; the provider entry
+  enables only the Responses route and uses an origin-only `baseurl`.
+- [ ] The documentation does not guarantee custom Open Responses item/SSE
+  preservation. The owner-gated Aperture acceptance run must prove it and add
+  session-log evidence.

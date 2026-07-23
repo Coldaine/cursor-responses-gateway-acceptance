@@ -28,3 +28,10 @@ Unit tests and type checks cover the current HTTP core. The real-Cursor
 acceptance run, the official Open Responses compliance suite, hosted tools,
 and MCP are not complete yet; see `PROGRESS.md` and `ACCEPTANCE.md` for the
 authoritative state.
+
+## Aperture
+
+Use [the ready-to-paste provider entry](aperture/provider-entry.md) after a
+tailnet owner has selected a real reachable server address and Cursor model.
+The provider must enable `openai_responses`, and its `baseurl` must not include
+`/v1`. The direct and Aperture acceptance evidence remains pending.

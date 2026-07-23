@@ -1,5 +1,5 @@
 import { once } from "node:events";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import type { Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -378,5 +378,39 @@ describe("server authentication", () => {
     expect(plan.status).toBe(200);
     await expect(plan.json()).resolves.toMatchObject({ output: [{ type: "cursor:plan", status: "completed" }] });
     await expect(readFile(join(repoRoot, "docs", "dispatch", "plans", "task-18.md"), "utf8")).resolves.toContain("status: draft");
+  });
+
+  it("returns a refused receipt when cursor:implement receives an unapproved plan", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "cursor-implement-http-"));
+    const draftPath = join(repoRoot, "docs", "dispatch", "plans", "task-21.md");
+    await mkdir(join(repoRoot, "docs", "dispatch", "plans"), { recursive: true });
+    await writeFile(draftPath, "---\nstatus: draft\n---\n\n# Plan\n", "utf8");
+    const app = createApp({
+      apiKey: "test-server-key",
+      cursorApiKey: "cursor-key",
+      cwd: repoRoot,
+      runner: { async run() { throw new Error("Cursor must not run"); } },
+    } as never);
+    const server = app.listen(0);
+    servers.push(server);
+    await once(server, "listening");
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("Expected a TCP listener");
+
+    const response = await fetch(`http://127.0.0.1:${address.port}/v1/responses`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer test-server-key" },
+      body: JSON.stringify({
+        model: "cursor-test",
+        input: "Implement it.",
+        tools: [{ type: "cursor:implement" }],
+        tool_choice: { type: "cursor:implement", arguments: { taskId: "task-21", planPath: draftPath } },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      output: [{ type: "cursor:implement", status: "refused", result: { error: "Plan is not approved" } }],
+    });
   });
 });

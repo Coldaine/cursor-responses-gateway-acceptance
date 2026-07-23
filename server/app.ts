@@ -17,6 +17,7 @@ import { createToolReceipt, type HostedToolType } from "./receipts.js";
 import { parseResponseRequest, renderInputForCursor } from "./request.js";
 import { writeCompletedResponseStream } from "./sse.js";
 import { McpSessionManager } from "./mcp.js";
+import { PlanPolicyError } from "./plan-policy.js";
 import {
   InMemoryResponseStore,
   PreviousResponseNotFoundError,
@@ -107,6 +108,7 @@ export function createApp(options: AppOptions): Express {
   const runner = options.runner ?? new CursorSdkRunner();
   const responseStore = options.responseStore ?? new InMemoryResponseStore();
   const dispatch = new DispatchService(options.cwd ?? process.cwd());
+  const cursorTasks = new CursorTaskDispatcher(dispatch, runner);
   const mcpSessions = new McpSessionManager(options.cwd ?? process.cwd());
   app.use(express.json({ limit: "10mb" }));
 
@@ -170,23 +172,50 @@ export function createApp(options: AppOptions): Express {
           (tool) => tool && typeof tool === "object" && (tool as Record<string, unknown>).type === hostedTool.type,
         );
         if (!declared) throw new InvalidRequestError(`Hosted tool ${hostedTool.type} was not supplied`);
-        const receipt = hostedTool.type === "cursor:plan"
+        const receipt = hostedTool.type === "cursor:plan" || hostedTool.type === "cursor:implement"
           ? await (async () => {
               const cursorApiKey = options.cursorApiKey ?? process.env.CURSOR_API_KEY;
               if (!cursorApiKey) {
-                throw new InvalidRequestError("CURSOR_API_KEY is not configured for cursor:plan");
+                return createToolReceipt({
+                  type: hostedTool.type,
+                  status: "failed",
+                  invocation: hostedTool.args,
+                  result: { error: `CURSOR_API_KEY is not configured for ${hostedTool.type}` },
+                });
               }
-              const planPath = await new CursorTaskDispatcher(dispatch, runner).plan({
-                apiKey: cursorApiKey,
-                model: input.model,
-                taskId: String(hostedTool.args.taskId ?? ""),
-                briefPath: String(hostedTool.args.briefPath ?? ""),
-              });
-              return createToolReceipt({
-                type: "cursor:plan",
-                invocation: hostedTool.args,
-                result: { planPath },
-              });
+              try {
+                if (hostedTool.type === "cursor:plan") {
+                  const planPath = await cursorTasks.plan({
+                    apiKey: cursorApiKey,
+                    model: input.model,
+                    taskId: String(hostedTool.args.taskId ?? ""),
+                    briefPath: String(hostedTool.args.briefPath ?? ""),
+                  });
+                  return createToolReceipt({
+                    type: hostedTool.type,
+                    invocation: hostedTool.args,
+                    result: { planPath },
+                  });
+                }
+                const result = await cursorTasks.implement({
+                  apiKey: cursorApiKey,
+                  model: input.model,
+                  taskId: String(hostedTool.args.taskId ?? ""),
+                  planPath: String(hostedTool.args.planPath ?? ""),
+                });
+                return createToolReceipt({
+                  type: hostedTool.type,
+                  invocation: hostedTool.args,
+                  result: { ...result },
+                });
+              } catch (error) {
+                return createToolReceipt({
+                  type: hostedTool.type,
+                  status: error instanceof PlanPolicyError ? "refused" : "failed",
+                  invocation: hostedTool.args,
+                  result: { error: error instanceof Error ? error.message : "Hosted tool failed" },
+                });
+              }
             })()
           : await executeDeterministicTool(dispatch, hostedTool.type, hostedTool.args);
         const resource = createHostedToolResponse({

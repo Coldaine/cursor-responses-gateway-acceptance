@@ -38,7 +38,7 @@ function assertOk(response: Response, name: string): void {
   if (!response.ok) throw new Error(`${name}: HTTP ${response.status}`);
 }
 
-async function hostedTool(type: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+async function hostedReceipt(type: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
   const response = await request("/responses", {
     model,
     input: `Execute ${type}.`,
@@ -49,6 +49,11 @@ async function hostedTool(type: string, args: Record<string, unknown>): Promise<
   const payload = (await response.json()) as { output?: Array<Record<string, unknown>> };
   const receipt = payload.output?.find((item) => item.type === type);
   if (!receipt) throw new Error(`${type}: receipt item was missing`);
+  return receipt;
+}
+
+async function hostedTool(type: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const receipt = await hostedReceipt(type, args);
   if (receipt.status !== "completed") throw new Error(`${type}: ${String((receipt.result as { error?: unknown })?.error ?? receipt.status)}`);
   return receipt;
 }
@@ -90,9 +95,12 @@ results.push(
     await hostedTool("cursor:write_brief", { taskId: "acceptance-task", content: "Add a small function and test." });
     const plan = await hostedTool("cursor:plan", { taskId: "acceptance-task", briefPath: "docs/dispatch/briefs/acceptance-task.md" });
     const planPath = String((plan.result as { planPath?: unknown })?.planPath);
-    await hostedTool("cursor:implement", { taskId: "acceptance-task", planPath });
+    const refused = await hostedReceipt("cursor:implement", { taskId: "acceptance-task", planPath });
+    if (refused.status !== "refused") throw new Error("implement before approval was not refused");
     await hostedTool("cursor:approve_plan", { planPath });
-    await hostedTool("cursor:implement", { taskId: "acceptance-task", planPath });
+    const implemented = await hostedTool("cursor:implement", { taskId: "acceptance-task", planPath });
+    const diffstat = (implemented.result as { measuredDiffstat?: unknown })?.measuredDiffstat;
+    if (typeof diffstat !== "string" || diffstat.length === 0) throw new Error("implement receipt omitted measured diffstat");
   }),
 );
 results.push(
@@ -102,10 +110,22 @@ results.push(
   }),
 );
 results.push(
-  await run("7. integration, phase gate, and out-of-scope fault", async () => {
+  await run("7. integration and phase gate", async () => {
     await hostedTool("cursor:integrate_task", { taskId: "acceptance-task", phaseId: "acceptance" });
     await hostedTool("cursor:gate_phase", { phaseId: "acceptance" });
-    const receipt = await hostedTool("cursor:implement", { taskId: "out-of-scope", planPath: "docs/dispatch/plans/out-of-scope.md" });
+  }),
+);
+results.push(
+  await run("fault. out-of-scope dispatch edit is reverted and flagged", async () => {
+    const taskId = "out-of-scope";
+    await hostedTool("cursor:write_brief", {
+      taskId,
+      content: "The only requested implementation is to create docs/dispatch/forbidden.md. Do exactly that.",
+    });
+    const plan = await hostedTool("cursor:plan", { taskId, briefPath: `docs/dispatch/briefs/${taskId}.md` });
+    const planPath = String((plan.result as { planPath?: unknown })?.planPath);
+    await hostedTool("cursor:approve_plan", { planPath });
+    const receipt = await hostedTool("cursor:implement", { taskId, planPath });
     const flags = (receipt.result as { flags?: unknown })?.flags;
     if (!Array.isArray(flags) || flags.length === 0) throw new Error("out-of-scope edit was not flagged");
   }),

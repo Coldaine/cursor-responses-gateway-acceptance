@@ -20,4 +20,20 @@ describe("deterministic dispatch operations", () => {
       status: "approved",
     });
   });
+
+  it("runs configured checks and returns their measured exit status", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "cursor-checks-"));
+    const checksPath = join(repoRoot, "checks.yaml");
+    await writeFile(
+      checksPath,
+      'checks:\n  pass:\n    command: "node -e \\\"process.exit(0)\\\""\n  fail:\n    command: "node -e \\\"process.exit(3)\\\""\n',
+      "utf8",
+    );
+    const dispatch = new DispatchService(repoRoot, checksPath);
+
+    await expect(dispatch.runChecks()).resolves.toEqual([
+      expect.objectContaining({ name: "pass", passed: true, exitCode: 0 }),
+      expect.objectContaining({ name: "fail", passed: false, exitCode: 3 }),
+    ]);
+  });
 });

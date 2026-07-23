@@ -31,6 +31,14 @@ export async function executeDeterministicTool(
           result: { planPath: plan.path, bodyHash: plan.bodyHash },
         });
       }
+      case "cursor:run_checks": {
+        const suite = args.suite;
+        if (suite !== undefined && typeof suite !== "string") {
+          throw new Error("suite must be a string when provided");
+        }
+        const checks = await dispatch.runChecks(suite);
+        return createToolReceipt({ type, invocation: args, result: { checks } });
+      }
       default:
         return createToolReceipt({
           type,

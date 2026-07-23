@@ -59,6 +59,6 @@ function renderItem(item: unknown): string {
 }
 
 export function renderInputForCursor(input: ResponseRequest["input"]): string {
-  if (typeof input === "string") return input;
+  if (typeof input === "string") return `[user]\n${input}`;
   return input.map(renderItem).join("\n\n");
 }

@@ -167,4 +167,58 @@ describe("server authentication", () => {
       output: [{ type: "compaction" }],
     });
   });
+
+  it("replays prior input then prior output before new input for previous_response_id", async () => {
+    const prompts: string[] = [];
+    const outputs = ["OK.", "cobalt"];
+    const app = createApp({
+      apiKey: "test-server-key",
+      cursorApiKey: "cursor-key",
+      cwd: process.cwd(),
+      runner: {
+        async run(options: { prompt: string }) {
+          prompts.push(options.prompt);
+          return { text: outputs.shift() ?? "", events: [] };
+        },
+      },
+    } as never);
+    const server = app.listen(0);
+    servers.push(server);
+    await once(server, "listening");
+
+    const address = server.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("Expected a TCP listener");
+    }
+    const url = `http://127.0.0.1:${address.port}/v1/responses`;
+    const headers = {
+      "content-type": "application/json",
+      authorization: "Bearer test-server-key",
+    };
+
+    const first = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: "cursor-test",
+        input: "Remember the code word: cobalt.",
+      }),
+    });
+    const firstBody = (await first.json()) as { id: string };
+    expect(first.status).toBe(200);
+
+    const second = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: "cursor-test",
+        previous_response_id: firstBody.id,
+        input: "What is the code word?",
+      }),
+    });
+    expect(second.status).toBe(200);
+    expect(prompts[1]).toBe(
+      "[user]\nRemember the code word: cobalt.\n\n[assistant]\nOK.\n\n[user]\nWhat is the code word?",
+    );
+  });
 });

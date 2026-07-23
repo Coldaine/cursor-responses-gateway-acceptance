@@ -10,12 +10,17 @@ import {
 } from "./openresponses.js";
 import { parseResponseRequest, renderInputForCursor } from "./request.js";
 import { writeCompletedResponseStream } from "./sse.js";
+import {
+  InMemoryResponseStore,
+  PreviousResponseNotFoundError,
+} from "./state.js";
 
 export interface AppOptions {
   apiKey: string;
   cursorApiKey?: string;
   cwd?: string;
   runner?: CursorRunner;
+  responseStore?: InMemoryResponseStore;
 }
 
 interface ErrorPayload {
@@ -42,6 +47,7 @@ function requestIsAuthenticated(request: Request, apiKey: string): boolean {
 export function createApp(options: AppOptions): Express {
   const app = express();
   const runner = options.runner ?? new CursorSdkRunner();
+  const responseStore = options.responseStore ?? new InMemoryResponseStore();
   app.use(express.json({ limit: "10mb" }));
 
   app.post("/v1/responses", async (request: Request, response: Response) => {
@@ -63,9 +69,15 @@ export function createApp(options: AppOptions): Express {
         return;
       }
 
+      const currentInput = renderInputForCursor(input.input);
+      const previous = input.previous_response_id
+        ? responseStore.get(input.previous_response_id)
+        : null;
       const prompt = [
         input.instructions ? `[instructions]\n${input.instructions}` : null,
-        renderInputForCursor(input.input),
+        previous?.inputText ?? null,
+        previous ? `[assistant]\n${previous.outputText}` : null,
+        currentInput,
       ]
         .filter((part): part is string => part !== null)
         .join("\n\n");
@@ -83,6 +95,14 @@ export function createApp(options: AppOptions): Express {
         previousResponseId: input.previous_response_id,
         store: input.store,
       });
+      if (input.store) {
+        responseStore.put(resource.id, {
+          inputText: [previous?.inputText ?? null, currentInput]
+            .filter((part): part is string => part !== null)
+            .join("\n\n"),
+          outputText: output.text,
+        });
+      }
 
       if (input.stream) {
         writeCompletedResponseStream(response, resource);
@@ -91,6 +111,15 @@ export function createApp(options: AppOptions): Express {
 
       response.json(resource);
     } catch (error) {
+      if (error instanceof PreviousResponseNotFoundError) {
+        response.status(404).json({
+          error: {
+            type: "not_found",
+            message: error.message,
+          },
+        });
+        return;
+      }
       if (error instanceof ZodError) {
         response.status(400).json({
           error: {

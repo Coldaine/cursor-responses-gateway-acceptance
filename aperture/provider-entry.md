@@ -8,10 +8,10 @@ Replace the placeholders before an Aperture owner saves this provider. Keep
 {
   "providers": {
     "cursor-openresponses": {
-      "name": "Cursor Open Responses Provider",
+      "name": "Cursor Responses Gateway",
       "description": "Cursor SDK-backed Open Responses server",
       "baseurl": "http://<tailnet-hostname-or-ip>:8787",
-      "apikey": "<OPENRESPONSES_API_KEY>",
+      "apikey": "<CURSOR_RESPONSES_API_KEY>",
       "authorization": "bearer",
       "auth_mode": "override",
       "models": ["<CURSOR_MODEL_ID>"],

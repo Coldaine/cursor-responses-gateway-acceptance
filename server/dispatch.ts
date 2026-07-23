@@ -172,10 +172,17 @@ export class DispatchService {
       await execFileAsync("git", ["switch", "-c", phaseBranch, baseline.baseCommit], { cwd: this.repoRoot });
     }
 
-    await execFileAsync("git", ["add", "-A", "--", ".", ":(exclude)docs/dispatch/**"], { cwd: this.repoRoot });
-    const staged = await this.gitHasChanges(["diff", "--cached", "--quiet"]);
-    if (!staged) throw new Error(`Task ${taskId} produced no stageable changes`);
-    await execFileAsync("git", ["commit", "-m", `feat(${taskId}): integrate task`], { cwd: this.repoRoot });
+    try {
+      const staged = await this.stageTaskChanges(baseline.baseCommit);
+      if (!staged) throw new Error(`Task ${taskId} produced no stageable changes`);
+      await execFileAsync("git", ["commit", "-m", `feat(${taskId}): integrate task`], { cwd: this.repoRoot });
+    } catch (error) {
+      // captureTaskBaseline requires a clean non-dispatch index before any
+      // task begins. Restoring this index therefore cannot discard user work;
+      // it only makes a failed integration retryable.
+      await execFileAsync("git", ["reset", "--quiet"], { cwd: this.repoRoot });
+      throw error;
+    }
     const commit = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: this.repoRoot });
     const integrationCommit = commit.stdout.trim();
     const updated: TaskBaseline = { ...baseline, phaseBranch, integrationCommit };
@@ -321,6 +328,18 @@ export class DispatchService {
     }
   }
 
+  private async stageTaskChanges(baseCommit: string): Promise<boolean> {
+    const [tracked, untracked] = await Promise.all([
+      execFileAsync("git", ["diff", "--name-only", "-z", baseCommit], { cwd: this.repoRoot }),
+      execFileAsync("git", ["ls-files", "--others", "--exclude-standard", "-z"], { cwd: this.repoRoot }),
+    ]);
+    const paths = [...new Set([...nulPaths(tracked.stdout), ...nulPaths(untracked.stdout)])]
+      .filter((path) => path !== "docs/dispatch" && !path.startsWith("docs/dispatch/"));
+    if (paths.length === 0) return false;
+    await execFileAsync("git", ["add", "-A", "--", ...paths], { cwd: this.repoRoot });
+    return this.gitHasChanges(["diff", "--cached", "--quiet"]);
+  }
+
   private async readPrChecks(pullRequestUrl: string): Promise<PrCheck[]> {
     try {
       const result = await execFileAsync("gh", ["pr", "checks", pullRequestUrl, "--json", "name,bucket,state,link"], {
@@ -413,4 +432,8 @@ async function runCheck(name: string, command: string, cwd: string): Promise<Che
       });
     });
   });
+}
+
+function nulPaths(stdout: string): string[] {
+  return stdout.split("\0").filter(Boolean);
 }

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
@@ -73,6 +73,8 @@ describe("deterministic dispatch operations", () => {
     const baseline = await dispatch.captureTaskBaseline("task-8");
     await dispatch.persistTaskBaseline(baseline);
     await writeFile(join(repoRoot, "tracked.txt"), "after\n", "utf8");
+    await mkdir(join(repoRoot, "docs", "dispatch", "plans"), { recursive: true });
+    await writeFile(join(repoRoot, "docs", "dispatch", "plans", "task-9.md"), "ignored dispatch record\n", "utf8");
 
     const diff = await dispatch.getDiff("task-8");
     expect(diff.baseCommit).toBe(baseline.baseCommit);
@@ -101,6 +103,8 @@ describe("deterministic dispatch operations", () => {
       .resolves.toMatchObject({ stdout: "before\n" });
     await expect(execFileAsync("git", ["show", "phase/1:tracked.txt"], { cwd: repoRoot }))
       .resolves.toMatchObject({ stdout: "after\n" });
+    await expect(execFileAsync("git", ["show", "phase/1:docs/dispatch/plans/task-9.md"], { cwd: repoRoot }))
+      .rejects.toThrow();
   });
 
   it("writes a draft plan from a Cursor planner result without letting the agent choose its path", async () => {

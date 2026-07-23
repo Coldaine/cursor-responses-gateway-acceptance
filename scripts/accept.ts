@@ -1,11 +1,11 @@
 import { appendFile } from "node:fs/promises";
 
 const baseUrl = (process.env.APERTURE_BASE_URL ?? process.env.OPENRESPONSES_BASE_URL ?? "http://127.0.0.1:8787/v1").replace(/\/$/, "");
-const apiKey = process.env.OPENRESPONSES_API_KEY;
+const apiKey = process.env.CURSOR_RESPONSES_API_KEY;
 const model = process.env.CURSOR_MODEL;
 
 if (!apiKey || !model) {
-  throw new Error("OPENRESPONSES_API_KEY and CURSOR_MODEL must be set");
+  throw new Error("CURSOR_RESPONSES_API_KEY and CURSOR_MODEL must be set");
 }
 
 interface AcceptanceResult {

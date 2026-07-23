@@ -1,9 +1,9 @@
 import { createApp } from "./app.js";
 
-const apiKey = process.env.OPENRESPONSES_API_KEY ?? process.env.CURSOR_OPENRESPONSES_API_KEY;
+const apiKey = process.env.CURSOR_RESPONSES_API_KEY;
 if (!apiKey) {
   throw new Error(
-    "OPENRESPONSES_API_KEY (or CURSOR_OPENRESPONSES_API_KEY) must be set before starting the server",
+    "CURSOR_RESPONSES_API_KEY must be set before starting the server",
   );
 }
 
@@ -16,5 +16,5 @@ const app = createApp({
 });
 
 app.listen(port, "127.0.0.1", () => {
-  console.log(`Cursor Open Responses provider listening on http://127.0.0.1:${port}`);
+  console.log(`Cursor Responses Gateway listening on http://127.0.0.1:${port}`);
 });

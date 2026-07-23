@@ -55,7 +55,7 @@ const MAX_RESPONSE_TEXT_CHARS = 32_000;
 function capResponseText(text: string): string {
   return text.length <= MAX_RESPONSE_TEXT_CHARS
     ? text
-    : `${text.slice(0, MAX_RESPONSE_TEXT_CHARS)}\n\n[truncated by cursor-openresponses-provider]`;
+    : `${text.slice(0, MAX_RESPONSE_TEXT_CHARS)}\n\n[truncated by cursor-responses-gateway]`;
 }
 
 function selectFunctionTool(

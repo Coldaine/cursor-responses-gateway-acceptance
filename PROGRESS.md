@@ -1,6 +1,6 @@
 # Progress
 
-## Current phase: contract grounding and bootstrap
+## Current phase: live acceptance and external gates
 
 - [x] Read `GOAL.md` and preserved the supplied build documents.
 - [x] Initialized the repository without altering the supplied documents.
@@ -25,7 +25,22 @@
 - [x] Wire `config/model-routing.yaml` aliases and allow-list policy into HTTP request execution; aliases select the actual Cursor model while the Response retains the caller's model id.
 - [x] Map Cursor SDK rate limits to Open Responses `too_many_requests` (429) and Cursor execution failures to `model_error` (500).
 - [x] Persist a clean-start task baseline before the first implementation; `cursor:get_diff` and implementation receipts measure against that commit instead of an arbitrary working-tree diff.
-- [ ] Run a real Cursor model-discovery and acceptance pass. As verified on this host, `CURSOR_API_KEY` and `OPENRESPONSES_API_KEY` are absent from the process; the local Doppler CLI is authenticated but has no project/config scope for this workspace; and this repository has no `origin` remote for the real ephemeral PR gate. No secret was written to disk.
+- [x] Configure `ai-automation/dev` in Doppler for this workspace, promote the
+  Cursor project secret to `CURSOR_API_KEY`, and generate the gateway caller
+  secret `CURSOR_RESPONSES_API_KEY`. No secret was written to disk.
+- [x] Verify the real Cursor key through the official SDK: model discovery
+  returned 32 models, including `default`.
+- [x] Run the live service with Doppler injection: authenticated model lookup,
+  non-streaming response, streaming response, Responses lifecycle, and the
+  server-enforced out-of-scope write restoration all completed against Cursor.
+- [ ] Complete a fresh full direct acceptance run. The previous scratch
+  repository successfully integrated the task, then correctly stopped at the
+  expected `origin`-remote requirement for the real ephemeral PR gate.
+- [ ] Run the official Open Responses CLI's 10 core tests. The current external
+  runner aborts at Bun/Zod schema startup before it can issue an HTTP request;
+  see `ACCEPTANCE.md` for the exact boundary.
+- [ ] Configure an `origin` remote with authorized GitHub CI before the
+  ephemeral-PR gate can be executed end to end.
 
 ## Decisions recorded from current sources
 

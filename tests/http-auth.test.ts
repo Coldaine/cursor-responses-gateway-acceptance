@@ -218,7 +218,7 @@ describe("server authentication", () => {
     const payload = await response.json() as { id: string; output: Array<{ content: Array<{ text: string }> }> };
     const returnedText = payload.output[0].content[0].text;
 
-    expect(returnedText).toContain("[truncated by cursor-openresponses-provider]");
+    expect(returnedText).toContain("[truncated by cursor-responses-gateway]");
     expect(returnedText.length).toBeLessThan(fullText.length);
     await expect(readFile(join(repoRoot, "docs", "dispatch", "runtime", "responses", `${payload.id}.md`), "utf8"))
       .resolves.toBe(fullText);

@@ -66,7 +66,7 @@ export interface CompactionResource {
     id: string;
     type: "compaction";
     encrypted_content: string;
-    created_by: "cursor-openresponses-provider";
+    created_by: "cursor-responses-gateway";
   }>;
   usage: ResponseResource["usage"];
 }
@@ -85,7 +85,7 @@ export function createCompactionResource(options: {
         id: `cmp_${options.id}`,
         type: "compaction",
         encrypted_content: options.opaqueContent,
-        created_by: "cursor-openresponses-provider",
+        created_by: "cursor-responses-gateway",
       },
     ],
     usage: {

@@ -1,8 +1,8 @@
 {
-  "name": "cursor-openresponses-provider",
+  "name": "cursor-responses-gateway",
   "version": "0.1.0",
   "private": true,
-  "description": "Open Responses HTTP server backed by the official Cursor SDK.",
+  "description": "Authenticated Open Responses gateway backed by the official Cursor SDK.",
   "type": "module",
   "engines": {
     "node": ">=22.13.0"

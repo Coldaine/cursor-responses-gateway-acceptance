@@ -99,7 +99,7 @@ export class CursorTaskDispatcher {
         prompt: [
           "You are the implementation role for a repository task.",
           "Execute only the approved plan below.",
-          "Do not edit docs/dispatch; it is controlled by the server.",
+          "The server enforces write boundaries and independently restores its dispatch records.",
           "Do not create commits or pull requests.",
           `Task ID: ${options.taskId}`,
           "Approved plan:",

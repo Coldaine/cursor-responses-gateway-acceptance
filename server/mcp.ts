@@ -67,7 +67,7 @@ const hostedTools: Array<{
 
 function buildMcpServer(executor: Pick<HostedToolExecutor, "execute">): McpServer {
   const server = new McpServer({
-    name: "cursor-openresponses-provider",
+    name: "cursor-responses-gateway",
     version: "0.1.0",
   });
 

@@ -67,7 +67,7 @@ describe("MCP streamable HTTP surface", () => {
     expect(JSON.parse(dataLine.slice("data: ".length))).toMatchObject({
       jsonrpc: "2.0",
       id: 1,
-      result: { serverInfo: { name: "cursor-openresponses-provider" } },
+      result: { serverInfo: { name: "cursor-responses-gateway" } },
     });
 
     const toolResponse = await fetch(`http://127.0.0.1:${address.port}/mcp`, {

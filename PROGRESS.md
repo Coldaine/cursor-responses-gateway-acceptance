@@ -24,7 +24,7 @@
 - [x] Cap ordinary Responses output at 32,000 characters and retain the full Cursor output under `docs/dispatch/runtime/responses/`; continuation storage preserves the untruncated output.
 - [x] Wire `config/model-routing.yaml` aliases and allow-list policy into HTTP request execution; aliases select the actual Cursor model while the Response retains the caller's model id.
 - [x] Persist a clean-start task baseline before the first implementation; `cursor:get_diff` and implementation receipts measure against that commit instead of an arbitrary working-tree diff.
-- [ ] Run a real Cursor model-discovery and acceptance pass. The local Doppler CLI is not scoped to a project/config for this workspace, and `CURSOR_API_KEY` is not present in the current process; no secret was written to disk.
+- [ ] Run a real Cursor model-discovery and acceptance pass. As verified on this host, `CURSOR_API_KEY` and `OPENRESPONSES_API_KEY` are absent from the process; the local Doppler CLI is authenticated but has no project/config scope for this workspace; and this repository has no `origin` remote for the real ephemeral PR gate. No secret was written to disk.
 
 ## Decisions recorded from current sources
 

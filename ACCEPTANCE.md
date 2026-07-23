@@ -118,3 +118,17 @@ integrated its task before its expected no-remote gate failure.
 - FAIL: 7. integration and phase gate — cursor:gate_phase: failed
 - PASS: fault. out-of-scope dispatch edit is reverted and flagged — passed
 - PASS: 8. previous_response_id continuation — passed
+
+### Acceptance attempt 2026-07-23T14:56:26.365Z
+
+- PASS: 1. model resolution — passed
+- PASS: 2. basic non-streaming response — passed
+- PASS: 3. streaming response — passed
+- PASS: 4. cursor:explore receipt — passed
+- PASS: 5. brief, plan, approval, and implement lifecycle — passed
+- PASS: 6. checks and measured diff — passed
+- FAIL: 7. integration and phase gate — cursor:integrate_task: Command failed: git add -A -- ACCEPTANCE.md config/checks.yaml server/clamp.ts server/dispatch.ts server/phase-gate.ts tests/clamp.test.ts tests/dispatch.test.ts server/text.ts tests/text.test.ts
+fatal: pathspec 'server/phase-gate.ts' did not match any files
+
+- FAIL: fault. out-of-scope dispatch edit is reverted and flagged — cursor:implement: Cannot establish a task baseline while non-dispatch workspace changes are present
+- PASS: 8. previous_response_id continuation — passed

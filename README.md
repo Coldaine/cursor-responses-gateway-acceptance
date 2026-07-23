@@ -32,10 +32,13 @@ Callers use `Authorization: Bearer <server bearer token>` or `X-API-Key`.
 Never commit either value or an `.env` file.
 
 `cursor:integrate_task` commits a baselined task only to `phase/<n>`.
-`cursor:gate_phase` requires an authenticated GitHub CLI and passing PR CI on
-the server host. It creates an ephemeral PR, waits for checks, closes a red
-gate, and merges/deletes a green one. The repository now has an `origin` and
-PR CI; the end-to-end hosted phase gate remains an acceptance task.
+`cursor:gate_phase` requires an authenticated GitHub CLI and the named PR
+checks in `config/checks.yaml` on the server host. It creates an ephemeral PR,
+waits for both `verify` and `Kilo Code Review`, closes a red gate, and
+merges/deletes a green one. A queued Kilo review is not optional and keeps the
+gate open; it must not be bypassed to make a phase look green. The repository
+now has an `origin` and PR CI; the end-to-end hosted phase gate remains an
+acceptance task.
 
 Cursor-backed `cursor:plan`, `cursor:implement`, and `cursor:review` receipts
 retain their full Cursor output in `docs/dispatch/episodes/` for later audit;

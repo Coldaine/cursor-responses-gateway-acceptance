@@ -9,3 +9,4 @@ checks:
 phase_gate:
   required_checks:
     - verify
+    - Kilo Code Review

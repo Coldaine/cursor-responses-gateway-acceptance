@@ -95,11 +95,11 @@ describe("deterministic dispatch operations", () => {
     expect(diff.diff).toContain("+export const added = true");
   });
 
-  it("waits only for configured phase checks instead of an optional third-party review", () => {
+  it("waits for the configured Kilo review as well as CI", () => {
     expect(assessPhaseGateChecks([
       { name: "verify", bucket: "pass", state: "SUCCESS" },
       { name: "Kilo Code Review", bucket: "pending", state: "QUEUED" },
-    ], ["verify"])).toEqual({ state: "green", failedChecks: [] });
+    ], ["verify", "Kilo Code Review"])).toEqual({ state: "pending", failedChecks: [] });
   });
 
   it("records a task baseline and reports only changes after that commit", async () => {
@@ -148,6 +148,29 @@ describe("deterministic dispatch operations", () => {
       .resolves.toMatchObject({ stdout: "after\n" });
     await expect(execFileAsync("git", ["show", "phase/1:docs/dispatch/plans/task-9.md"], { cwd: repoRoot }))
       .rejects.toThrow();
+  });
+
+  it("refuses to reuse a phase branch that predates the task baseline", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "cursor-stale-phase-"));
+    await execFileAsync("git", ["init", "-q"], { cwd: repoRoot });
+    await execFileAsync("git", ["config", "user.name", "Test"], { cwd: repoRoot });
+    await execFileAsync("git", ["config", "user.email", "test@example.com"], { cwd: repoRoot });
+    await writeFile(join(repoRoot, "tracked.txt"), "first\n", "utf8");
+    await execFileAsync("git", ["add", "tracked.txt"], { cwd: repoRoot });
+    await execFileAsync("git", ["commit", "-qm", "first"], { cwd: repoRoot });
+    await execFileAsync("git", ["branch", "phase/stale"], { cwd: repoRoot });
+    await writeFile(join(repoRoot, "tracked.txt"), "second\n", "utf8");
+    await execFileAsync("git", ["commit", "-am", "second", "-q"], { cwd: repoRoot });
+
+    const dispatch = new DispatchService(repoRoot);
+    const baseline = await dispatch.captureTaskBaseline("task-stale");
+    await dispatch.persistTaskBaseline(baseline);
+    await writeFile(join(repoRoot, "new-file.txt"), "task change\n", "utf8");
+
+    await expect(dispatch.integrateTask("task-stale", "stale"))
+      .rejects.toThrow("does not descend from task baseline");
+    await expect(execFileAsync("git", ["branch", "--show-current"], { cwd: repoRoot }))
+      .resolves.toMatchObject({ stdout: `${baseline.baseBranch}\n` });
   });
 
   it("writes a draft plan from a Cursor planner result without letting the agent choose its path", async () => {

@@ -169,6 +169,9 @@ export class DispatchService {
     const phaseBranch = `phase/${phaseId}`;
     const branchExists = await this.gitRefExists(`refs/heads/${phaseBranch}`);
     if (branchExists) {
+      if (!await this.gitCommitIsAncestor(baseline.baseCommit, `refs/heads/${phaseBranch}`)) {
+        throw new Error(`Phase branch ${phaseBranch} does not descend from task baseline ${baseline.baseCommit}`);
+      }
       await execFileAsync("git", ["switch", phaseBranch], { cwd: this.repoRoot });
     } else {
       await execFileAsync("git", ["switch", "-c", phaseBranch, baseline.baseCommit], { cwd: this.repoRoot });
@@ -355,6 +358,16 @@ export class DispatchService {
   private async gitRefExists(ref: string): Promise<boolean> {
     try {
       await execFileAsync("git", ["show-ref", "--verify", "--quiet", ref], { cwd: this.repoRoot });
+      return true;
+    } catch (error: unknown) {
+      if ((error as { code?: unknown }).code === 1) return false;
+      throw error;
+    }
+  }
+
+  private async gitCommitIsAncestor(ancestor: string, descendant: string): Promise<boolean> {
+    try {
+      await execFileAsync("git", ["merge-base", "--is-ancestor", ancestor, descendant], { cwd: this.repoRoot });
       return true;
     } catch (error: unknown) {
       if ((error as { code?: unknown }).code === 1) return false;

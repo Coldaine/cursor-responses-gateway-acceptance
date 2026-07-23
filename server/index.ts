@@ -11,6 +11,7 @@ const port = Number.parseInt(process.env.PORT ?? "8787", 10);
 const app = createApp({
   apiKey,
   cursorApiKey: process.env.CURSOR_API_KEY,
+  defaultModel: process.env.CURSOR_MODEL,
   cwd: process.env.CURSOR_WORKSPACE_CWD ?? process.cwd(),
 });
 

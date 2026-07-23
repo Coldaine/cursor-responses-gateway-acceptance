@@ -16,7 +16,8 @@
 - [x] Expose an authenticated MCP streamable-HTTP initialization surface at `/mcp`.
 - [x] Implement deterministic `cursor:write_brief` and `cursor:approve_plan` primitives with dispatch-directory path guards.
 - [x] Connect deterministic hosted tools and Cursor-backed `cursor:plan` / `cursor:implement` to the Responses surface. `implement` verifies approval and body hash before invoking Cursor, serializes runs, reverts all `docs/dispatch` edits, and returns server-measured diffstat.
-- [ ] Connect the same Cursor-backed hosted-tool execution layer to MCP, and implement the remaining hosted roles (`explore`, `review`, `integrate_task`, and `gate_phase`).
+- [x] Connect the same `cursor:plan` and `cursor:implement` execution layer to MCP, including the configured default Cursor model for MCP calls.
+- [ ] Implement the remaining hosted roles (`explore`, `review`, `integrate_task`, and `gate_phase`) on both surfaces.
 - [ ] Baseline task diffs so `cursor:get_diff` is scoped to each task rather than the whole working-tree diff.
 - [ ] Run a real Cursor model-discovery and acceptance pass. The local Doppler CLI is not scoped to a project/config for this workspace, and `CURSOR_API_KEY` is not present in the current process; no secret was written to disk.
 

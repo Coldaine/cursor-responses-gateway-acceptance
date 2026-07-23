@@ -23,7 +23,13 @@ afterEach(async () => {
 describe("MCP streamable HTTP surface", () => {
   it("accepts an authenticated initialize request at /mcp", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), "cursor-mcp-"));
-    const app = createApp({ apiKey: "test-server-key", cwd: repoRoot });
+    const app = createApp({
+      apiKey: "test-server-key",
+      cursorApiKey: "cursor-key",
+      defaultModel: "cursor-test",
+      cwd: repoRoot,
+      runner: { async run() { return { text: "# Plan\n\n1. Add it.\n", events: [] }; } },
+    } as never);
     const server = app.listen(0);
     servers.push(server);
     await once(server, "listening");
@@ -95,5 +101,37 @@ describe("MCP streamable HTTP surface", () => {
     });
     await expect(readFile(join(repoRoot, "docs", "dispatch", "briefs", "task-15.md"), "utf8"))
       .resolves.toBe("Write this through MCP.\n");
+
+    const planResponse = await fetch(`http://127.0.0.1:${address.port}/mcp`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-server-key",
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        "mcp-session-id": sessionId ?? "",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/call",
+        params: {
+          name: "cursor:plan",
+          arguments: { taskId: "task-15", briefPath: "docs/dispatch/briefs/task-15.md" },
+        },
+      }),
+    });
+    expect(planResponse.status).toBe(200);
+    const planBody = await planResponse.text();
+    const planData = planBody.split("\n").find((line) => line.startsWith("data: "));
+    if (!planData) throw new Error("Expected an MCP plan SSE data line");
+    const planPayload = JSON.parse(planData.slice("data: ".length)) as {
+      result: { content: Array<{ text: string }> };
+    };
+    expect(JSON.parse(planPayload.result.content[0].text)).toMatchObject({
+      type: "cursor:plan",
+      status: "completed",
+    });
+    await expect(readFile(join(repoRoot, "docs", "dispatch", "plans", "task-15.md"), "utf8"))
+      .resolves.toContain("status: draft");
   });
 });

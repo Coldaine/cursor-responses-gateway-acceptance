@@ -1,8 +1,8 @@
 # Cursor Open Responses Provider
 
 An Open Responses HTTP server backed by the official `@cursor/sdk`. It exposes
-`POST /v1/responses`, `POST /v1/responses/compact`, and (in progress) MCP over
-streamable HTTP at `/mcp`. It does not expose Chat Completions.
+`POST /v1/responses`, `POST /v1/responses/compact`, and MCP over streamable
+HTTP at `/mcp`. It does not expose Chat Completions.
 
 ## Requirements
 
@@ -25,9 +25,9 @@ Never commit either value or an `.env` file.
 ## Verification status
 
 Unit tests and type checks cover the current HTTP core. The real-Cursor
-acceptance run, the official Open Responses compliance suite, hosted tools,
-and MCP are not complete yet; see `PROGRESS.md` and `ACCEPTANCE.md` for the
-authoritative state.
+acceptance run, the official Open Responses compliance suite, and several
+hosted roles are not complete yet; see `PROGRESS.md` and `ACCEPTANCE.md` for
+the authoritative state.
 
 ## Aperture
 

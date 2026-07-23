@@ -5,7 +5,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { z } from "zod";
 
 import { DispatchService } from "./dispatch.js";
-import { executeDeterministicTool } from "./dispatch-tools.js";
+import { HostedToolExecutor } from "./hosted-tool-executor.js";
 import type { HostedToolType } from "./receipts.js";
 
 const hostedTools: Array<{
@@ -65,7 +65,7 @@ const hostedTools: Array<{
   },
 ];
 
-function buildMcpServer(dispatch: DispatchService): McpServer {
+function buildMcpServer(executor: Pick<HostedToolExecutor, "execute">): McpServer {
   const server = new McpServer({
     name: "cursor-openresponses-provider",
     version: "0.1.0",
@@ -73,7 +73,7 @@ function buildMcpServer(dispatch: DispatchService): McpServer {
 
   for (const tool of hostedTools) {
     server.registerTool(tool.name, { description: tool.description, inputSchema: tool.inputSchema }, async (args) => {
-      const receipt = await executeDeterministicTool(dispatch, tool.name, args);
+      const receipt = await executor.execute(tool.name, args);
       return {
         content: [{ type: "text", text: JSON.stringify(receipt) }],
         isError: receipt.status !== "completed",
@@ -91,7 +91,10 @@ interface McpSession {
 export class McpSessionManager {
   private readonly sessions = new Map<string, McpSession>();
 
-  constructor(private readonly repoRoot: string) {}
+  constructor(
+    private readonly repoRoot: string,
+    private readonly executor?: Pick<HostedToolExecutor, "execute">,
+  ) {}
 
   async handle(request: Request, response: Response): Promise<void> {
     const sessionId = request.get("mcp-session-id");
@@ -109,7 +112,11 @@ export class McpSessionManager {
       return;
     }
 
-    const server = buildMcpServer(new DispatchService(this.repoRoot));
+    const executor = this.executor ?? new HostedToolExecutor(
+      new DispatchService(this.repoRoot),
+      { async run() { throw new Error("Cursor-backed MCP tools are not configured"); } },
+    );
+    const server = buildMcpServer(executor);
     let transport: StreamableHTTPServerTransport;
     transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),

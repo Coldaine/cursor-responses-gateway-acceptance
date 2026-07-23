@@ -7,6 +7,21 @@ import { DispatchService } from "../server/dispatch.js";
 import { executeDeterministicTool } from "../server/dispatch-tools.js";
 
 describe("deterministic hosted tools", () => {
+  it("returns bounded repository file-and-line hits for cursor:explore", async () => {
+    const root = await mkdtemp(join(tmpdir(), "cursor-explore-"));
+    await writeFile(join(root, "response-server.ts"), "export const responseServer = true;\n", "utf8");
+    const dispatch = new DispatchService(root);
+
+    const receipt = await executeDeterministicTool(dispatch, "cursor:explore", {
+      query: "Find the response server entry point",
+    });
+
+    expect(receipt).toMatchObject({
+      status: "completed",
+      result: { hits: [expect.objectContaining({ path: "response-server.ts", line: 1 })] },
+    });
+  });
+
   it("returns a completed receipt for writing a brief and approving its plan", async () => {
     const root = await mkdtemp(join(tmpdir(), "cursor-hosted-tools-"));
     const dispatch = new DispatchService(root);

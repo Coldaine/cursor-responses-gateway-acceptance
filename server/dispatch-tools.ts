@@ -16,6 +16,14 @@ export async function executeDeterministicTool(
 ): Promise<ToolReceipt> {
   try {
     switch (type) {
+      case "cursor:explore": {
+        const paths = args.paths;
+        if (paths !== undefined && (!Array.isArray(paths) || paths.some((path) => typeof path !== "string"))) {
+          throw new Error("paths must be an array of strings when provided");
+        }
+        const result = await dispatch.explore(stringArgument(args, "query"), paths as string[] | undefined);
+        return createToolReceipt({ type, invocation: args, result: { ...result } });
+      }
       case "cursor:write_brief": {
         const briefPath = await dispatch.writeBrief(
           stringArgument(args, "taskId"),

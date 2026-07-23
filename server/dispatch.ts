@@ -98,6 +98,44 @@ export class DispatchService {
       truncated: diff.stdout.length > 64_000,
     };
   }
+
+  async explore(query: string, paths?: string[]): Promise<ExploreResult> {
+    const terms = query.match(/[a-zA-Z0-9_]{3,}/g)?.map((term) => term.toLowerCase()) ?? [];
+    const ignoredTerms = new Set(["find", "where", "what", "with", "from", "that", "this", "code", "file", "files", "the", "and", "for"]);
+    const searchTerms = [...new Set(terms.filter((term) => !ignoredTerms.has(term)))];
+    if (searchTerms.length === 0) throw new Error("query must contain at least one searchable term");
+
+    const safePaths = (paths ?? ["."]).map((candidate) => {
+      const resolvedPath = resolve(this.repoRoot, candidate);
+      const relativePath = relative(resolve(this.repoRoot), resolvedPath).replaceAll("\\", "/");
+      if (relativePath.startsWith("../") || relativePath === "") {
+        if (candidate === ".") return ".";
+        throw new Error("explore paths must stay inside the configured repository");
+      }
+      return relativePath;
+    });
+
+    let stdout = "";
+    try {
+      const result = await execFileAsync("rg", [
+        "--line-number", "--no-heading", "--color", "never", "--ignore-case",
+        "--glob", "!node_modules/**", "--glob", "!dist/**", "--glob", "!.git/**",
+        searchTerms.join("|"), ...safePaths,
+      ], { cwd: this.repoRoot, maxBuffer: 1_000_000 });
+      stdout = result.stdout;
+    } catch (error: unknown) {
+      if ((error as { code?: unknown }).code !== 1) throw error;
+    }
+
+    const allLines = stdout.split(/\r?\n/).filter(Boolean);
+    const hits = allLines.slice(0, 100).flatMap((line) => {
+      const match = line.match(/^(.+?):(\d+):(.*)$/);
+      return match
+        ? [{ path: match[1].replaceAll("\\", "/").replace(/^\.\//, ""), line: Number.parseInt(match[2], 10), excerpt: match[3].slice(0, 500) }]
+        : [];
+    });
+    return { query, hits, truncated: allLines.length > hits.length };
+  }
 }
 
 export interface CheckResult {
@@ -111,6 +149,12 @@ export interface CheckResult {
 export interface MeasuredDiff {
   diffstat: string;
   diff: string;
+  truncated: boolean;
+}
+
+export interface ExploreResult {
+  query: string;
+  hits: Array<{ path: string; line: number; excerpt: string }>;
   truncated: boolean;
 }
 

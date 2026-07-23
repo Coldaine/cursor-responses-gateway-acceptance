@@ -106,3 +106,15 @@ the server, rather than a prompt-only rule, detected and restored the
 out-of-scope dispatch write. A fresh complete acceptance scratch repository is
 still needed for a single all-current run; the current scratch already
 integrated its task before its expected no-remote gate failure.
+
+### Acceptance attempt 2026-07-23T14:50:02.386Z
+
+- PASS: 1. model resolution — passed
+- PASS: 2. basic non-streaming response — passed
+- PASS: 3. streaming response — passed
+- PASS: 4. cursor:explore receipt — passed
+- FAIL: 5. brief, plan, approval, and implement lifecycle — implement receipt omitted measured diffstat
+- PASS: 6. checks and measured diff — passed
+- FAIL: 7. integration and phase gate — cursor:gate_phase: failed
+- PASS: fault. out-of-scope dispatch edit is reverted and flagged — passed
+- PASS: 8. previous_response_id continuation — passed

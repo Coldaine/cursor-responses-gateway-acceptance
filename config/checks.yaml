@@ -5,3 +5,7 @@ checks:
     command: npm test
   build:
     command: npm run build
+
+phase_gate:
+  required_checks:
+    - verify

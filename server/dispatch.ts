@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { parse } from "yaml";
 
 import { approvePlan, type VerifiedPlan } from "./plan-policy.js";
+import { assessPhaseGateChecks, type PhaseGateCheck } from "./phase-gate.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -89,7 +90,7 @@ export class DispatchService {
 
   async getDiff(taskId?: string): Promise<MeasuredDiff> {
     const baseCommit = taskId ? (await this.readTaskBaseline(taskId)).baseCommit : undefined;
-    const [diffstat, diff] = await Promise.all([
+    const [diffstat, diff, untracked] = await Promise.all([
       execFileAsync("git", ["diff", "--no-ext-diff", "--stat", ...(baseCommit ? [baseCommit] : [])], {
         cwd: this.repoRoot,
         maxBuffer: 2_000_000,
@@ -98,11 +99,12 @@ export class DispatchService {
         cwd: this.repoRoot,
         maxBuffer: 2_000_000,
       }),
+      this.readUntrackedDiff(),
     ]);
     return {
-      diffstat: diffstat.stdout.slice(-8_000),
-      diff: diff.stdout.slice(-64_000),
-      truncated: diff.stdout.length > 64_000,
+      diffstat: `${diffstat.stdout}${untracked.diffstat}`.slice(-8_000),
+      diff: `${diff.stdout}${untracked.diff}`.slice(-64_000),
+      truncated: diff.stdout.length + untracked.diff.length > 64_000,
       ...(baseCommit ? { baseCommit } : {}),
     };
   }
@@ -214,16 +216,12 @@ export class DispatchService {
     const pullRequestUrl = created.stdout.trim();
     if (!pullRequestUrl) throw new Error("gh pr create did not return a pull request URL");
 
-    try {
-      await execFileAsync("gh", ["pr", "checks", pullRequestUrl, "--watch", "--fail-fast", "--interval", "10"], {
-        cwd: this.repoRoot,
-      });
-    } catch {
-      const checks = await this.readPrChecks(pullRequestUrl);
+    const checkAssessment = await this.waitForPhaseChecks(pullRequestUrl);
+    if (checkAssessment.state === "failed") {
       await execFileAsync("gh", ["pr", "close", pullRequestUrl, "--comment", "Closing failed ephemeral phase gate."], {
         cwd: this.repoRoot,
       });
-      return { status: "failed", phaseBranch, pullRequestUrl, failedChecks: checks.filter((check) => check.bucket === "fail") };
+      return { status: "failed", phaseBranch, pullRequestUrl, failedChecks: checkAssessment.failedChecks };
     }
 
     await execFileAsync("gh", ["pr", "merge", pullRequestUrl, "--merge", "--delete-branch"], { cwd: this.repoRoot });
@@ -405,6 +403,62 @@ export class DispatchService {
       return [];
     }
   }
+
+  private async waitForPhaseChecks(pullRequestUrl: string): Promise<ReturnType<typeof assessPhaseGateChecks>> {
+    const requiredCheckNames = await this.readRequiredPhaseChecks();
+    while (true) {
+      const assessment = assessPhaseGateChecks(await this.readPrChecks(pullRequestUrl), requiredCheckNames);
+      if (assessment.state !== "pending") return assessment;
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 10_000));
+    }
+  }
+
+  private async readRequiredPhaseChecks(): Promise<string[]> {
+    const loaded = parse(await readFile(this.checksPath, "utf8")) as {
+      phase_gate?: { required_checks?: unknown };
+    };
+    const required = loaded.phase_gate?.required_checks;
+    if (!Array.isArray(required) || required.length === 0 || required.some((name) => typeof name !== "string" || name.length === 0)) {
+      throw new Error("checks.yaml must define phase_gate.required_checks as a non-empty list of check names");
+    }
+    return required;
+  }
+
+  private async readUntrackedDiff(): Promise<{ diffstat: string; diff: string }> {
+    const result = await execFileAsync("git", ["ls-files", "--others", "--exclude-standard", "-z"], {
+      cwd: this.repoRoot,
+      maxBuffer: 2_000_000,
+    });
+    const paths = nulPaths(result.stdout)
+      .filter((path) => path !== "docs/dispatch" && !path.startsWith("docs/dispatch/"));
+    const entries = await Promise.all(paths.map(async (path) => {
+      const absolutePath = join(this.repoRoot, path);
+      const contents = await readFile(absolutePath).catch(() => null);
+      if (contents === null) return null;
+      const displayPath = path.replaceAll("\\", "/");
+      const text = contents.includes(0) ? null : contents.toString("utf8");
+      const lines = text === null ? null : (text === "" ? [] : text.replace(/\r?\n$/, "").split(/\r?\n/));
+      const addedLines = lines ? lines.map((line) => `+${line}`).join("\n") : "Binary files differ";
+      return {
+        diffstat: ` ${displayPath} | ${lines?.length ?? 0} +\n`,
+        diff: [
+          `diff --git a/${displayPath} b/${displayPath}`,
+          "new file mode 100644",
+          "--- /dev/null",
+          `+++ b/${displayPath}`,
+          `@@ -0,0 +1,${lines?.length ?? 0} @@`,
+          addedLines,
+          "",
+        ].join("\n"),
+      };
+    }));
+    return entries.reduce<{ diffstat: string; diff: string }>(
+      (combined, entry) => entry
+        ? { diffstat: combined.diffstat + entry.diffstat, diff: combined.diff + entry.diff }
+        : combined,
+      { diffstat: "", diff: "" },
+    );
+  }
 }
 
 export interface CheckResult {
@@ -437,12 +491,7 @@ export interface IntegrationResult {
   baseBranch: string;
 }
 
-export interface PrCheck {
-  name: string;
-  bucket: string;
-  state: string;
-  link?: string;
-}
+export type PrCheck = PhaseGateCheck;
 
 export interface GateResult {
   status: "merged" | "failed" | "pending";

@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
 import { DispatchService } from "../server/dispatch.js";
+import { assessPhaseGateChecks } from "../server/phase-gate.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -72,6 +73,33 @@ describe("deterministic dispatch operations", () => {
     expect(diff.diff).toContain("-before");
     expect(diff.diff).toContain("+after");
     expect(diff.diffstat).toContain("tracked.txt");
+  });
+
+  it("includes untracked task files in the measured diff", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "cursor-untracked-diff-"));
+    await execFileAsync("git", ["init", "-q"], { cwd: repoRoot });
+    await writeFile(join(repoRoot, "tracked.txt"), "baseline\n", "utf8");
+    await execFileAsync("git", ["add", "tracked.txt"], { cwd: repoRoot });
+    await execFileAsync(
+      "git",
+      ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "baseline"],
+      { cwd: repoRoot },
+    );
+    const dispatch = new DispatchService(repoRoot);
+    const baseline = await dispatch.captureTaskBaseline("task-untracked");
+    await dispatch.persistTaskBaseline(baseline);
+    await writeFile(join(repoRoot, "new-file.ts"), "export const added = true;\n", "utf8");
+
+    const diff = await dispatch.getDiff("task-untracked");
+    expect(diff.diffstat).toContain("new-file.ts | 1 +");
+    expect(diff.diff).toContain("+export const added = true");
+  });
+
+  it("waits only for configured phase checks instead of an optional third-party review", () => {
+    expect(assessPhaseGateChecks([
+      { name: "verify", bucket: "pass", state: "SUCCESS" },
+      { name: "Kilo Code Review", bucket: "pending", state: "QUEUED" },
+    ], ["verify"])).toEqual({ state: "green", failedChecks: [] });
   });
 
   it("records a task baseline and reports only changes after that commit", async () => {
